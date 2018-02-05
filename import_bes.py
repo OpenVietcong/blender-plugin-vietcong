@@ -15,7 +15,10 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
+import os
 import bpy
+from bpy_extras.io_utils import ImportHelper
+from bpy.props import StringProperty, CollectionProperty
 
 bl_info = {
     "name"       : "Vietcong BES (.bes)",
@@ -28,8 +31,23 @@ bl_info = {
     "category"   : "Import-Export",
 }
 
-class BESImporter(bpy.types.Operator):
+class BESImporter(bpy.types.Operator, ImportHelper):
     bl_idname = "import_mesh.bes"
+    bl_label  = "Import BES files"
+
+    # Show only "*.bes" files for import
+    filter_glob = StringProperty(default="*.bes", options={'HIDDEN'})
+
+    # Directory of selected files for import
+    directory = StringProperty(options={'HIDDEN'})
+
+    # Collection of selected files for import
+    files = CollectionProperty(name="File name", type=bpy.types.OperatorFileListElement)
+
+    def execute(self, context):
+        for f in self.files:
+            print(os.path.join(self.directory, f.name))
+        return {'FINISHED'}
 
 def menu_import_bes(self, context):
     self.layout.operator(BESImporter.bl_idname, text="BES (.bes)")
