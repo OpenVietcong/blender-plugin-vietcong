@@ -31,6 +31,13 @@ bl_info = {
     "category"   : "Import-Export",
 }
 
+class BES(object):
+    vertices = []
+    faces = []
+    def __init__(self, fname):
+        self.vertices = [(0, 0, 0), (5, 0, 0), (2.5, 5, 0)]
+        self.faces = [(0, 1, 2)]
+
 class BESImporter(bpy.types.Operator, ImportHelper):
     bl_idname = "import_mesh.bes"
     bl_label  = "Import BES files"
@@ -46,7 +53,20 @@ class BESImporter(bpy.types.Operator, ImportHelper):
 
     def execute(self, context):
         for f in self.files:
+            # Create new object
+            bes = BES(os.path.join(self.directory, f.name))
+            mesh = bpy.data.meshes.new(f.name)
+            obj = bpy.data.objects.new(f.name, mesh)
+
+            # Add object into scene
+            bpy.context.scene.objects.link(obj)
+
+            # Update mesh data
+            mesh.from_pydata(bes.vertices, [], bes.faces)
+            mesh.update(calc_edges=True)
+
             print(os.path.join(self.directory, f.name))
+
         return {'FINISHED'}
 
 def menu_import_bes(self, context):
