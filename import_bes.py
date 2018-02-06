@@ -16,6 +16,7 @@
 # ##### END GPL LICENSE BLOCK #####
 
 import os
+import struct
 import bpy
 from bpy_extras.io_utils import ImportHelper
 from bpy.props import StringProperty, CollectionProperty
@@ -35,8 +36,32 @@ class BES(object):
     vertices = []
     faces = []
     def __init__(self, fname):
+        self.f = open(fname, "rb")
+
+        self.read_header()
+        self.read_preview()
+        self.read_data()
+
         self.vertices = [(0, 0, 0), (5, 0, 0), (2.5, 5, 0)]
         self.faces = [(0, 1, 2)]
+
+    def parse(self, fmt):
+        st_fmt = fmt
+        st_len = struct.calcsize(st_fmt)
+        st_unpack = struct.Struct(st_fmt).unpack_from
+        data = st_unpack(self.f.read(st_len))
+        return data
+
+    def read_header(self):
+        data = self.parse("<5s4sI3c")
+        print(data)
+
+    def read_preview(self):
+        self.f.read(0x3000)
+
+    def read_data(self):
+        (label, size) = self.parse("<II")
+        print("Block {} of size {} bytes".format(hex(label),size))
 
 class BESImporter(bpy.types.Operator, ImportHelper):
     bl_idname = "import_mesh.bes"
