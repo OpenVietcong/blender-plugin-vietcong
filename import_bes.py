@@ -64,10 +64,10 @@ class BES(object):
 
     def parse_data(self, data):
         start = 0
-        while(1):
+        while (len(data[start:]) > 8):
             (label, size) = self.unpack("<II", data[start:])
             print("Block {} of size {} bytes".format(hex(label),size))
-            subblock = data[start+8:size]
+            subblock = data[start+8:start+size]
             start += size 
 
             if   label == 0x001:
@@ -94,11 +94,22 @@ class BES(object):
                 print("Unknown block {}".format(hex(label)))
 
     def parse_block_mesh(self, data):
-        a = 0
+        (children, name_size) = self.unpack("<II", data)
+        name = self.unpack("<" + str(name_size) + "c", data[8:])
+        print("Children: {}, Name: {}".format(children,str(name)))
+
+        self.parse_data(data[8+name_size:])
+
     def parse_block_unk30(self, data):
-        a = 0
+        unknown = self.unpack("<I", data)
+
+        self.parse_data(data[4:])
+
     def parse_block_unk31(self, data):
-        a = 0
+        unknown = self.unpack("<I", data)
+
+        self.parse_data(data[4:])
+
     def parse_block_vertices(self, data):
         a = 0
     def parse_block_faces(self, data):
