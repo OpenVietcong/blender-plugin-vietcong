@@ -111,19 +111,19 @@ class BES(object):
         self.parse_data(data[4:])
 
     def parse_block_vertices(self, data):
-        a = 0
+        pass
     def parse_block_faces(self, data):
-        a = 0
+        pass
     def parse_block_properties(self, data):
-        a = 0
+        pass
     def parse_block_unk35(self, data):
-        a = 0
+        pass
     def parse_block_unk36(self, data):
-        a = 0
+        pass
     def parse_block_user_info(self, data):
-        a = 0
+        pass
     def parse_block_unk100(self, data):
-        a = 0
+        pass
 
 class BESImporter(bpy.types.Operator, ImportHelper):
     bl_idname = "import_mesh.bes"
