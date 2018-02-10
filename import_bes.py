@@ -33,17 +33,15 @@ bl_info = {
 }
 
 class BES(object):
-    vertices = []
-    faces = []
     def __init__(self, fname):
+        self.faces = []
+        self.vertices = []
+
         self.f = open(fname, "rb")
 
         self.read_header()
         self.read_preview()
         self.read_data()
-
-        self.vertices = [(0, 0, 0), (5, 0, 0), (2.5, 5, 0)]
-        self.faces = [(0, 1, 2)]
 
     def unpack(self, fmt, data):
         st_fmt = fmt
@@ -111,9 +109,32 @@ class BES(object):
         self.parse_data(data[4:])
 
     def parse_block_vertices(self, data):
-        pass
+        (count, size, unknown) = self.unpack("<III", data)
+        if size < 12:
+            print("Unsupported size '{}' of vertex struct".format(size))
+            return
+
+        if len(self.vertices) != 0:
+            return
+
+        ptr = 12
+        for i in range(count):
+            (x,y,z, unk) = self.unpack("<fff" + str(size-12) + "s", data[ptr:])
+            self.vertices.append((x,y,z))
+            ptr += size
+
     def parse_block_faces(self, data):
-        pass
+        (count,) = self.unpack("<I", data)
+
+        if len(self.faces) != 0:
+            return
+
+        ptr = 4
+        for i in range(count):
+            (a, b, c) = self.unpack("<III", data[ptr:])
+            self.faces.append((a,b,c))
+            ptr += 12
+
     def parse_block_properties(self, data):
         pass
     def parse_block_unk35(self, data):
