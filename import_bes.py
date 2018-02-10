@@ -95,18 +95,18 @@ class BES(object):
 
     def parse_block_mesh(self, data):
         (children, name_size) = self.unpack("<II", data)
-        name = self.unpack("<" + str(name_size) + "c", data[8:])
-        print("Children: {}, Name: {}".format(children,str(name)))
+        (name,) = self.unpack("<" + str(name_size) + "s", data[8:])
+        print("Children: {}, Name: {}".format(children,str(name, 'ascii')))
 
         self.parse_data(data[8+name_size:])
 
     def parse_block_unk30(self, data):
-        unknown = self.unpack("<I", data)
+        (unknown,) = self.unpack("<I", data)
 
         self.parse_data(data[4:])
 
     def parse_block_unk31(self, data):
-        unknown = self.unpack("<I", data)
+        (unknown,) = self.unpack("<I", data)
 
         self.parse_data(data[4:])
 
