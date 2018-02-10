@@ -69,11 +69,11 @@ class BES(object):
             start += size 
 
             if   label == 0x001:
-                self.parse_block_mesh(subblock)
+                self.parse_block_object(subblock)
             elif label == 0x030:
                 self.parse_block_unk30(subblock)
             elif label == 0x031:
-                self.parse_block_unk31(subblock)
+                self.parse_block_mesh(subblock)
             elif label == 0x032:
                 self.parse_block_vertices(subblock)
             elif label == 0x033:
@@ -84,6 +84,8 @@ class BES(object):
                 self.parse_block_unk35(subblock)
             elif label == 0x036:
                 self.parse_block_unk36(subblock)
+            elif label == 0x038:
+                self.parse_block_unk38(subblock)
             elif label == 0x070:
                 self.parse_block_user_info(subblock)
             elif label == 0x100:
@@ -91,20 +93,20 @@ class BES(object):
             else:
                 print("Unknown block {}".format(hex(label)))
 
-    def parse_block_mesh(self, data):
+    def parse_block_object(self, data):
         (children, name_size) = self.unpack("<II", data)
         (name,) = self.unpack("<" + str(name_size) + "s", data[8:])
-        print("Children: {}, Name: {}".format(children,str(name, 'ascii')))
+        print("Children: {}, Name({}): {}".format(children, name_size, str(name, 'ascii')))
 
         self.parse_data(data[8+name_size:])
 
     def parse_block_unk30(self, data):
-        (unknown,) = self.unpack("<I", data)
+        (mesh_children,) = self.unpack("<I", data)
 
         self.parse_data(data[4:])
 
-    def parse_block_unk31(self, data):
-        (unknown,) = self.unpack("<I", data)
+    def parse_block_mesh(self, data):
+        (mesh_id,) = self.unpack("<I", data)
 
         self.parse_data(data[4:])
 
@@ -140,6 +142,8 @@ class BES(object):
     def parse_block_unk35(self, data):
         pass
     def parse_block_unk36(self, data):
+        pass
+    def parse_block_unk38(self, data):
         pass
     def parse_block_user_info(self, data):
         pass
