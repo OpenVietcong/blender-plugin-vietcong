@@ -32,11 +32,20 @@ bl_info = {
     "category"   : "Import-Export",
 }
 
+class BESObject(object):
+    def __init__(self, name):
+        self.name = name
+        self.meshes = []
+
+class BESMesh(object):
+    def __init__(self, name, vertices, faces):
+        self.name = name
+        self.vertices = vertices
+        self.faces = faces
+
 class BES(object):
     def __init__(self, fname):
-        self.faces = []
-        self.vertices = []
-
+        self.objects = []
         self.f = open(fname, "rb")
 
         self.read_header()
@@ -63,7 +72,7 @@ class BES(object):
     def parse_data(self, data):
         start = 0
         while (len(data[start:]) > 8):
-            (label, size) = self.unpack("<II", data[start:])
+            (label, size) = self.parse_block_header(data[start:])
             print("Block {} of size {} bytes".format(hex(label),size))
             subblock = data[start+8:start+size]
             start += size 
@@ -93,49 +102,108 @@ class BES(object):
             else:
                 print("Unknown block {}".format(hex(label)))
 
-    def parse_block_object(self, data):
-        (children, name_size) = self.unpack("<II", data)
-        (name,) = self.unpack("<" + str(name_size) + "s", data[8:])
-        print("Children: {}, Name({}): {}".format(children, name_size, str(name, 'ascii')))
+    def parse_block_header(self, data):
+        return self.unpack("<II", data)
 
-        self.parse_data(data[8+name_size:])
+    def parse_block_object(self, data):
+        (children, name_size) = self.parse_block_header(data)
+        (name,) = self.unpack("<" + str(name_size) + "s", data[8:])
+        name = str(name, 'ascii')
+
+        model = BESObject(name)
+        self.objects.append(model)
+        print("Children: {}, Name({}): {}".format(children, name_size, name))
+
+        start = 8 + name_size
+        while len(data[start:]) > 0:
+            (label, size) = self.parse_block_header(data[start:])
+            subblock = data[start+8:start+size]
+            start += size
+
+            if label == 0x001:
+                self.parse_block_object(subblock)
+            elif label == 0x030:
+                model.meshes = self.parse_block_unk30(subblock)
+
+        return model
 
     def parse_block_unk30(self, data):
         (mesh_children,) = self.unpack("<I", data)
+        meshes = []
 
-        self.parse_data(data[4:])
+        start = 4
+        while len(data[start:]) > 0:
+            (label, size) = self.parse_block_header(data[start:])
+            subblock = data[start+8:start+size]
+            start += size
+
+            if label == 0x031:
+                meshes.append(self.parse_block_mesh(subblock))
+
+        return meshes
 
     def parse_block_mesh(self, data):
         (mesh_id,) = self.unpack("<I", data)
+        vertices = None
+        faces = None
 
-        self.parse_data(data[4:])
+        start = 4
+        while len(data[start:]) > 0:
+            (label, size) = self.parse_block_header(data[start:])
+            subblock = data[start+8:start+size]
+            start += size
+
+            if label == 0x032:
+                if vertices:
+                    print("Multiple vertices blocks in single mesh")
+                    return
+                vertices = self.parse_block_vertices(subblock)
+            elif label == 0x033:
+                if faces:
+                    print("Multiple face blocks in single mesh")
+                    return
+                faces = self.parse_block_faces(subblock)
+            else:
+                print("Invalid block in mesh")
+                return
+
+        mesh = BESMesh(hex(mesh_id), vertices, faces)
+        return mesh
 
     def parse_block_vertices(self, data):
         (count, size, unknown) = self.unpack("<III", data)
+        vertices = []
+
         if size < 12:
             print("Unsupported size '{}' of vertex struct".format(size))
             return
-
-        if len(self.vertices) != 0:
+        if count * size != len(data[12:]):
+            print("Block size mismatch")
             return
 
         ptr = 12
         for i in range(count):
             (x,y,z, unk) = self.unpack("<fff" + str(size-12) + "s", data[ptr:])
-            self.vertices.append((x,y,z))
+            vertices.append((x,y,z))
             ptr += size
+
+        return vertices
 
     def parse_block_faces(self, data):
         (count,) = self.unpack("<I", data)
+        faces = []
 
-        if len(self.faces) != 0:
+        if count * 12 != len(data[4:]):
+            print("Block size mismatch")
             return
 
         ptr = 4
         for i in range(count):
             (a, b, c) = self.unpack("<III", data[ptr:])
-            self.faces.append((a,b,c))
+            faces.append((a,b,c))
             ptr += 12
+
+        return faces
 
     def parse_block_properties(self, data):
         pass
@@ -164,20 +232,30 @@ class BESImporter(bpy.types.Operator, ImportHelper):
     files = CollectionProperty(name="File name", type=bpy.types.OperatorFileListElement)
 
     def execute(self, context):
+        # Load all selected files
         for f in self.files:
-            # Create new object
+            # Parse BES file
             bes = BES(os.path.join(self.directory, f.name))
-            mesh = bpy.data.meshes.new(f.name)
-            obj = bpy.data.objects.new(f.name, mesh)
 
-            # Add object into scene
-            bpy.context.scene.objects.link(obj)
+            # Parse all objects in BES file
+            for bes_obj in bes.objects:
+                bpy_mesh = None
 
-            # Update mesh data
-            mesh.from_pydata(bes.vertices, [], bes.faces)
-            mesh.update(calc_edges=True)
+                # Create object meshes
+                if len(bes_obj.meshes) > 0:
+                    # Create new mesh
+                    bes_mesh = bes_obj.meshes[0]
+                    bpy_mesh = bpy.data.meshes.new(bes_mesh.name)
 
-            print(os.path.join(self.directory, f.name))
+                    # Update mesh data
+                    bpy_mesh.from_pydata(bes_mesh.vertices, [], bes_mesh.faces)
+                    bpy_mesh.update(calc_edges=True)
+
+                # Create new object
+                bpy_obj = bpy.data.objects.new(bes_obj.name, bpy_mesh)
+
+                # Add object into scene
+                bpy.context.scene.objects.link(bpy_obj)
 
         return {'FINISHED'}
 
