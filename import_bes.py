@@ -35,6 +35,7 @@ bl_info = {
 class BESObject(object):
     def __init__(self, name):
         self.name = name
+        self.children = []
         self.meshes = []
 
 class BESMesh(object):
@@ -90,7 +91,7 @@ class BES(object):
             start += size 
 
             if   label == BES.BlockID.Object:
-                self.parse_block_object(subblock)
+                self.objects.append(self.parse_block_object(subblock))
             elif label == BES.BlockID.Unk30:
                 self.parse_block_unk30(subblock)
             elif label == BES.BlockID.Mesh:
@@ -123,7 +124,6 @@ class BES(object):
         name = str(name, 'ascii').strip(chr(0))
 
         model = BESObject(name)
-        self.objects.append(model)
         print("Children: {}, Name({}): {}".format(children, name_size, name))
 
         start = 8 + name_size
@@ -133,7 +133,7 @@ class BES(object):
             start += size
 
             if label == BES.BlockID.Object:
-                self.parse_block_object(subblock)
+                model.children.append(self.parse_block_object(subblock))
             elif label == BES.BlockID.Unk30:
                 model.meshes = self.parse_block_unk30(subblock)
 
@@ -251,26 +251,39 @@ class BESImporter(bpy.types.Operator, ImportHelper):
 
             # Parse all objects in BES file
             for bes_obj in bes.objects:
-                bpy_mesh = None
-
-                # Create object meshes
-                if len(bes_obj.meshes) > 0:
-                    # Create new mesh
-                    bes_mesh = bes_obj.meshes[0]
-                    mesh_name = "{}.{:08X}".format(bes_obj.name, bes_mesh.id)
-                    bpy_mesh = bpy.data.meshes.new(mesh_name)
-
-                    # Update mesh data
-                    bpy_mesh.from_pydata(bes_mesh.vertices, [], bes_mesh.faces)
-                    bpy_mesh.update(calc_edges=True)
-
-                # Create new object
-                bpy_obj = bpy.data.objects.new(bes_obj.name, bpy_mesh)
-
-                # Add object into scene
-                bpy.context.scene.objects.link(bpy_obj)
+                self.add_object(bes_obj, None)
 
         return {'FINISHED'}
+
+    def add_object(self, bes_obj, parent):
+        # Create new object
+        bpy_obj = bpy.data.objects.new(bes_obj.name, None)
+        bpy_obj.parent = parent
+
+        # Since Blender does not allow multiple meshes for single object (while BES does),
+        # we have to create seperate object for every mesh.
+        for bes_mesh in bes_obj.meshes:
+            # In BES the meshes do not have names, so we create one from object name and mesh ID
+            mesh_name = "{}.{:08X}".format(bes_obj.name, bes_mesh.id)
+
+            # Create new mesh
+            bpy_mesh = bpy.data.meshes.new(mesh_name)
+
+            # Update mesh data
+            bpy_mesh.from_pydata(bes_mesh.vertices, [], bes_mesh.faces)
+            bpy_mesh.update(calc_edges = True)
+
+            # Create new object from mesh and add it into scene
+            mesh_obj = bpy.data.objects.new(mesh_name, bpy_mesh)
+            mesh_obj.parent = bpy_obj
+            bpy.context.scene.objects.link(mesh_obj)
+
+        # Add children
+        for bes_child in bes_obj.children:
+            self.add_object(bes_child, bpy_obj)
+
+        # Add object into scene
+        bpy.context.scene.objects.link(bpy_obj)
 
 def menu_import_bes(self, context):
     self.layout.operator(BESImporter.bl_idname, text="BES (.bes)")
