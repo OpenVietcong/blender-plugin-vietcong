@@ -44,6 +44,18 @@ class BESMesh(object):
         self.faces = faces
 
 class BES(object):
+    class BlockID:
+        Object     = 0x0001
+        Unk30      = 0x0030
+        Mesh       = 0x0031
+        Vertices   = 0x0032
+        Faces      = 0x0033
+        Properties = 0x0034
+        Unk35      = 0x0035
+        Unk36      = 0x0036
+        Unk38      = 0x0038
+        UserInfo   = 0x0070
+
     def __init__(self, fname):
         self.objects = []
         self.f = open(fname, "rb")
@@ -77,25 +89,25 @@ class BES(object):
             subblock = data[start+8:start+size]
             start += size 
 
-            if   label == 0x001:
+            if   label == BES.BlockID.Object:
                 self.parse_block_object(subblock)
-            elif label == 0x030:
+            elif label == BES.BlockID.Unk30:
                 self.parse_block_unk30(subblock)
-            elif label == 0x031:
+            elif label == BES.BlockID.Mesh:
                 self.parse_block_mesh(subblock)
-            elif label == 0x032:
+            elif label == BES.BlockID.Vertices:
                 self.parse_block_vertices(subblock)
-            elif label == 0x033:
+            elif label == BES.BlockID.Faces:
                 self.parse_block_faces(subblock)
-            elif label == 0x034:
+            elif label == BES.BlockID.Properties:
                 self.parse_block_properties(subblock)
-            elif label == 0x035:
+            elif label == BES.BlockID.Unk35:
                 self.parse_block_unk35(subblock)
-            elif label == 0x036:
+            elif label == BES.BlockID.Unk36:
                 self.parse_block_unk36(subblock)
-            elif label == 0x038:
+            elif label == BES.BlockID.Unk38:
                 self.parse_block_unk38(subblock)
-            elif label == 0x070:
+            elif label == BES.BlockID.UserInfo:
                 self.parse_block_user_info(subblock)
             elif label == 0x100:
                 self.parse_block_unk100(subblock)
@@ -120,9 +132,9 @@ class BES(object):
             subblock = data[start+8:start+size]
             start += size
 
-            if label == 0x001:
+            if label == BES.BlockID.Object:
                 self.parse_block_object(subblock)
-            elif label == 0x030:
+            elif label == BES.BlockID.Unk30:
                 model.meshes = self.parse_block_unk30(subblock)
 
         return model
@@ -137,7 +149,7 @@ class BES(object):
             subblock = data[start+8:start+size]
             start += size
 
-            if label == 0x031:
+            if label == BES.BlockID.Mesh:
                 meshes.append(self.parse_block_mesh(subblock))
 
         return meshes
@@ -153,12 +165,12 @@ class BES(object):
             subblock = data[start+8:start+size]
             start += size
 
-            if label == 0x032:
+            if label == BES.BlockID.Vertices:
                 if vertices:
                     print("Multiple vertices blocks in single mesh")
                     return
                 vertices = self.parse_block_vertices(subblock)
-            elif label == 0x033:
+            elif label == BES.BlockID.Faces:
                 if faces:
                     print("Multiple face blocks in single mesh")
                     return
