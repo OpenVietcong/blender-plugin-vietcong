@@ -38,8 +38,8 @@ class BESObject(object):
         self.meshes = []
 
 class BESMesh(object):
-    def __init__(self, name, vertices, faces):
-        self.name = name
+    def __init__(self, mesh_id, vertices, faces):
+        self.id = mesh_id
         self.vertices = vertices
         self.faces = faces
 
@@ -118,7 +118,7 @@ class BES(object):
         return self.unpack("<II", data)
 
     def parse_block_object(self, data):
-        (children, name_size) = self.parse_block_header(data)
+        (children, name_size) = self.unpack("<II", data)
         (name,) = self.unpack("<" + str(name_size) + "s", data[8:])
         name = str(name, 'ascii')
 
@@ -179,7 +179,7 @@ class BES(object):
                 print("Invalid block in mesh")
                 return
 
-        mesh = BESMesh(hex(mesh_id), vertices, faces)
+        mesh = BESMesh(mesh_id, vertices, faces)
         return mesh
 
     def parse_block_vertices(self, data):
@@ -257,7 +257,7 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                 if len(bes_obj.meshes) > 0:
                     # Create new mesh
                     bes_mesh = bes_obj.meshes[0]
-                    bpy_mesh = bpy.data.meshes.new(bes_mesh.name)
+                    bpy_mesh = bpy.data.meshes.new(hex(bes_mesh.id))
 
                     # Update mesh data
                     bpy_mesh.from_pydata(bes_mesh.vertices, [], bes_mesh.faces)
