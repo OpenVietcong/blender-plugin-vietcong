@@ -120,7 +120,7 @@ class BES(object):
     def parse_block_object(self, data):
         (children, name_size) = self.unpack("<II", data)
         (name,) = self.unpack("<" + str(name_size) + "s", data[8:])
-        name = str(name, 'ascii')
+        name = str(name, 'ascii').strip(chr(0))
 
         model = BESObject(name)
         self.objects.append(model)
@@ -257,7 +257,8 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                 if len(bes_obj.meshes) > 0:
                     # Create new mesh
                     bes_mesh = bes_obj.meshes[0]
-                    bpy_mesh = bpy.data.meshes.new(hex(bes_mesh.id))
+                    mesh_name = "{}.{:08X}".format(bes_obj.name, bes_mesh.id)
+                    bpy_mesh = bpy.data.meshes.new(mesh_name)
 
                     # Update mesh data
                     bpy_mesh.from_pydata(bes_mesh.vertices, [], bes_mesh.faces)
