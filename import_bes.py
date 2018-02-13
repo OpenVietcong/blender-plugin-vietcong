@@ -57,6 +57,12 @@ class BES(object):
         Unk38      = 0x0038
         UserInfo   = 0x0070
 
+    class BlockPresence:
+        OptSingle   = 0  # <0;1>
+        OptMultiple = 1  # <0;N>
+        ReqSingle   = 2  # <1;1>
+        ReqMultiple = 3  # <1;N>
+
     def __init__(self, fname):
         self.objects = []
         self.f = open(fname, "rb")
@@ -83,40 +89,66 @@ class BES(object):
         self.parse_data(data)
 
     def parse_data(self, data):
-        start = 0
-        while (len(data[start:]) > 8):
-            (label, size) = self.parse_block_header(data[start:])
-            print("Block {} of size {} bytes".format(hex(label),size))
-            subblock = data[start+8:start+size]
-            start += size 
+        res = self.parse_block({BES.BlockID.UserInfo : BES.BlockPresence.ReqSingle,
+                                BES.BlockID.Object   : BES.BlockPresence.ReqSingle},
+                               data)
+        self.objects.append(res[BES.BlockID.Object])
 
-            if   label == BES.BlockID.Object:
-                self.objects.append(self.parse_block_object(subblock))
-            elif label == BES.BlockID.Unk30:
-                self.parse_block_unk30(subblock)
-            elif label == BES.BlockID.Mesh:
-                self.parse_block_mesh(subblock)
-            elif label == BES.BlockID.Vertices:
-                self.parse_block_vertices(subblock)
-            elif label == BES.BlockID.Faces:
-                self.parse_block_faces(subblock)
-            elif label == BES.BlockID.Properties:
-                self.parse_block_properties(subblock)
-            elif label == BES.BlockID.Unk35:
-                self.parse_block_unk35(subblock)
-            elif label == BES.BlockID.Unk36:
-                self.parse_block_unk36(subblock)
-            elif label == BES.BlockID.Unk38:
-                self.parse_block_unk38(subblock)
-            elif label == BES.BlockID.UserInfo:
-                self.parse_block_user_info(subblock)
-            elif label == 0x100:
-                self.parse_block_unk100(subblock)
-            else:
-                print("Unknown block {}".format(hex(label)))
-
-    def parse_block_header(self, data):
+    def parse_block_desc(self, data):
         return self.unpack("<II", data)
+
+    def parse_block_by_label(self, label, data):
+        if   label == BES.BlockID.Object:
+            return self.parse_block_object(data)
+        elif label == BES.BlockID.Unk30:
+            return self.parse_block_unk30(data)
+        elif label == BES.BlockID.Mesh:
+            return self.parse_block_mesh(data)
+        elif label == BES.BlockID.Vertices:
+            return self.parse_block_vertices(data)
+        elif label == BES.BlockID.Faces:
+            return self.parse_block_faces(data)
+        elif label == BES.BlockID.Properties:
+            return self.parse_block_properties(data)
+        elif label == BES.BlockID.Unk35:
+            return self.parse_block_unk35(data)
+        elif label == BES.BlockID.Unk36:
+            return self.parse_block_unk36(data)
+        elif label == BES.BlockID.Unk38:
+            return self.parse_block_unk38(data)
+        elif label == BES.BlockID.UserInfo:
+            return self.parse_block_user_info(data)
+        elif label == 0x100:
+            return self.parse_block_unk100(subblock)
+        else:
+            print("Unknown block {}".format(hex(label)))
+            return None
+
+    def parse_block(self, blocks, data):
+        ret = dict()
+        for label in blocks:
+            if blocks[label] == BES.BlockPresence.OptSingle or blocks[label] == BES.BlockPresence.ReqSingle:
+                ret[label] = None
+            else:
+                ret[label] = []
+
+        start = 0
+        while len(data[start:]) > 0:
+            (label, size) = self.parse_block_desc(data[start:])
+
+            if label in blocks:
+                subblock = data[start + 8: start + size]
+
+                if blocks[label] == BES.BlockPresence.OptSingle or blocks[label] == BES.BlockPresence.ReqSingle:
+                    blocks.pop(label)
+                    ret[label] = self.parse_block_by_label(label, subblock)
+                else:
+                    ret[label].append(self.parse_block_by_label(label, subblock))
+            else:
+                print("Error: " + hex(label))
+            start += size
+
+        return ret
 
     def parse_block_object(self, data):
         (children, name_size) = self.unpack("<II", data)
@@ -126,16 +158,15 @@ class BES(object):
         model = BESObject(name)
         print("Children: {}, Name({}): {}".format(children, name_size, name))
 
-        start = 8 + name_size
-        while len(data[start:]) > 0:
-            (label, size) = self.parse_block_header(data[start:])
-            subblock = data[start+8:start+size]
-            start += size
+        res = self.parse_block({BES.BlockID.Object   : BES.BlockPresence.OptMultiple,
+                                BES.BlockID.Unk30    : BES.BlockPresence.OptSingle,
+                                0x1000               : BES.BlockPresence.ReqSingle},
+                               data[8 + name_size:])
 
-            if label == BES.BlockID.Object:
-                model.children.append(self.parse_block_object(subblock))
-            elif label == BES.BlockID.Unk30:
-                model.meshes = self.parse_block_unk30(subblock)
+        for obj in res[BES.BlockID.Object]:
+            model.children.append(obj)
+        if res[BES.BlockID.Unk30]:
+            model.meshes = res[BES.BlockID.Unk30]
 
         return model
 
@@ -143,44 +174,23 @@ class BES(object):
         (mesh_children,) = self.unpack("<I", data)
         meshes = []
 
-        start = 4
-        while len(data[start:]) > 0:
-            (label, size) = self.parse_block_header(data[start:])
-            subblock = data[start+8:start+size]
-            start += size
+        res = self.parse_block({BES.BlockID.Mesh      : BES.BlockPresence.OptMultiple,
+                                BES.BlockID.Properties: BES.BlockPresence.ReqSingle,
+                                BES.BlockID.Unk35     : BES.BlockPresence.ReqSingle},
+                               data[4:])
 
-            if label == BES.BlockID.Mesh:
-                meshes.append(self.parse_block_mesh(subblock))
-
-        return meshes
+        return res[BES.BlockID.Mesh]
 
     def parse_block_mesh(self, data):
         (mesh_id,) = self.unpack("<I", data)
         vertices = None
         faces = None
 
-        start = 4
-        while len(data[start:]) > 0:
-            (label, size) = self.parse_block_header(data[start:])
-            subblock = data[start+8:start+size]
-            start += size
+        res = self.parse_block({BES.BlockID.Vertices  : BES.BlockPresence.ReqSingle,
+                                BES.BlockID.Faces     : BES.BlockPresence.ReqSingle},
+                               data[4:])
 
-            if label == BES.BlockID.Vertices:
-                if vertices:
-                    print("Multiple vertices blocks in single mesh")
-                    return
-                vertices = self.parse_block_vertices(subblock)
-            elif label == BES.BlockID.Faces:
-                if faces:
-                    print("Multiple face blocks in single mesh")
-                    return
-                faces = self.parse_block_faces(subblock)
-            else:
-                print("Invalid block in mesh")
-                return
-
-        mesh = BESMesh(mesh_id, vertices, faces)
-        return mesh
+        return  BESMesh(mesh_id, res[BES.BlockID.Vertices], res[BES.BlockID.Faces])
 
     def parse_block_vertices(self, data):
         (count, size, unknown) = self.unpack("<III", data)
