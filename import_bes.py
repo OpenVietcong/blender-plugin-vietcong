@@ -42,6 +42,7 @@ class BESObject(object):
         self.name = name
         self.children = []
         self.meshes = []
+        self.position = (0.0, 0.0, 0.0)
 
 class BESMesh(object):
     def __init__(self, mesh_id, vertices, faces):
@@ -178,28 +179,36 @@ class BES(object):
         model = BESObject(name)
         print("Children: {}, Name({}): {}".format(children, name_size, name))
 
-        res = self.parse_block({BES.BlockID.Object   : BES.BlockPresence.OptMultiple,
-                                BES.BlockID.Unk30    : BES.BlockPresence.OptSingle,
-                                0x1000               : BES.BlockPresence.OptSingle},
+        res = self.parse_block({BES.BlockID.Object     : BES.BlockPresence.OptMultiple,
+                                BES.BlockID.Properties : BES.BlockPresence.OptSingle,
+                                BES.BlockID.Unk30      : BES.BlockPresence.OptSingle,
+                                BES.BlockID.Unk35      : BES.BlockPresence.OptSingle,
+                                BES.BlockID.Unk38      : BES.BlockPresence.OptSingle,
+                                0x1000                 : BES.BlockPresence.OptSingle},
                                data[8 + name_size:])
 
         for obj in res[BES.BlockID.Object]:
             model.children.append(obj)
+        if res[BES.BlockID.Unk35]:
+            model.position = res[BES.BlockID.Unk35]
         if res[BES.BlockID.Unk30]:
-            model.meshes = res[BES.BlockID.Unk30]
+            if res[BES.BlockID.Unk30][BES.BlockID.Mesh]:
+                model.meshes = res[BES.BlockID.Unk30][BES.BlockID.Mesh]
+            if res[BES.BlockID.Unk30][BES.BlockID.Unk35]:
+                model.position = res[BES.BlockID.Unk30][BES.BlockID.Unk35]
 
         return model
 
     def parse_block_unk30(self, data):
         (mesh_children,) = self.unpack("<I", data)
-        meshes = []
 
         res = self.parse_block({BES.BlockID.Mesh      : BES.BlockPresence.OptMultiple,
                                 BES.BlockID.Properties: BES.BlockPresence.ReqSingle,
-                                BES.BlockID.Unk35     : BES.BlockPresence.ReqSingle},
+                                BES.BlockID.Unk35     : BES.BlockPresence.ReqSingle,
+                                BES.BlockID.Unk36     : BES.BlockPresence.OptSingle},
                                data[4:])
 
-        return res[BES.BlockID.Mesh]
+        return res
 
     def parse_block_mesh(self, data):
         (mesh_id,) = self.unpack("<I", data)
@@ -212,7 +221,7 @@ class BES(object):
         vertices = res[BES.BlockID.Vertices]
         faces    = res[BES.BlockID.Faces]
 
-        if max(max(faces, key=lambda item:item[1])) + 1 != len(vertices):
+        if max(max(faces, key=lambda item:item[1])) > len(vertices):
             raise BESError("Invalid faces number")
 
         return BESMesh(mesh_id, vertices, faces)
@@ -252,7 +261,8 @@ class BES(object):
     def parse_block_properties(self, data):
         pass
     def parse_block_unk35(self, data):
-        pass
+        return self.unpack("<fff", data)
+
     def parse_block_unk36(self, data):
         pass
     def parse_block_unk38(self, data):
@@ -307,6 +317,7 @@ class BESImporter(bpy.types.Operator, ImportHelper):
 
             # Create new object from mesh and add it into scene
             mesh_obj = bpy.data.objects.new(mesh_name, bpy_mesh)
+            mesh_obj.location = bes_obj.position
             mesh_obj.parent = bpy_obj
             bpy.context.scene.objects.link(mesh_obj)
 
