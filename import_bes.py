@@ -32,6 +32,11 @@ bl_info = {
     "category"   : "Import-Export",
 }
 
+class BESError(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+        Exception.__init__(self, msg)
+
 class BESObject(object):
     def __init__(self, name):
         self.name = name
@@ -79,7 +84,7 @@ class BES(object):
 
     def read_header(self):
         data = self.f.read(0x10)
-        print(self.unpack("<5s4sI3c", data))
+        self.unpack("<5s4sI3c", data)
 
     def read_preview(self):
         self.f.read(0x3000)
@@ -89,40 +94,46 @@ class BES(object):
         self.parse_data(data)
 
     def parse_data(self, data):
-        res = self.parse_block({BES.BlockID.UserInfo : BES.BlockPresence.ReqSingle,
-                                BES.BlockID.Object   : BES.BlockPresence.ReqSingle},
-                               data)
-        self.objects.append(res[BES.BlockID.Object])
+        try:
+            res = self.parse_block({BES.BlockID.UserInfo : BES.BlockPresence.ReqSingle,
+                                    BES.BlockID.Object   : BES.BlockPresence.ReqSingle},
+                                   data)
+            self.objects.append(res[BES.BlockID.Object])
+        except BESError as e:
+            print(e.msg)
+            print("Please report an issue at https://github.com/sonicpp/vietcong-blender-plugins/issues")
 
     def parse_block_desc(self, data):
         return self.unpack("<II", data)
 
     def parse_block_by_label(self, label, data):
-        if   label == BES.BlockID.Object:
-            return self.parse_block_object(data)
-        elif label == BES.BlockID.Unk30:
-            return self.parse_block_unk30(data)
-        elif label == BES.BlockID.Mesh:
-            return self.parse_block_mesh(data)
-        elif label == BES.BlockID.Vertices:
-            return self.parse_block_vertices(data)
-        elif label == BES.BlockID.Faces:
-            return self.parse_block_faces(data)
-        elif label == BES.BlockID.Properties:
-            return self.parse_block_properties(data)
-        elif label == BES.BlockID.Unk35:
-            return self.parse_block_unk35(data)
-        elif label == BES.BlockID.Unk36:
-            return self.parse_block_unk36(data)
-        elif label == BES.BlockID.Unk38:
-            return self.parse_block_unk38(data)
-        elif label == BES.BlockID.UserInfo:
-            return self.parse_block_user_info(data)
-        elif label == 0x100:
-            return self.parse_block_unk100(subblock)
-        else:
-            print("Unknown block {}".format(hex(label)))
-            return None
+        try:
+            if   label == BES.BlockID.Object:
+                return self.parse_block_object(data)
+            elif label == BES.BlockID.Unk30:
+                return self.parse_block_unk30(data)
+            elif label == BES.BlockID.Mesh:
+                return self.parse_block_mesh(data)
+            elif label == BES.BlockID.Vertices:
+                return self.parse_block_vertices(data)
+            elif label == BES.BlockID.Faces:
+                return self.parse_block_faces(data)
+            elif label == BES.BlockID.Properties:
+                return self.parse_block_properties(data)
+            elif label == BES.BlockID.Unk35:
+                return self.parse_block_unk35(data)
+            elif label == BES.BlockID.Unk36:
+                return self.parse_block_unk36(data)
+            elif label == BES.BlockID.Unk38:
+                return self.parse_block_unk38(data)
+            elif label == BES.BlockID.UserInfo:
+                return self.parse_block_user_info(data)
+            elif label == 0x1000:
+                return self.parse_block_unk1000(data)
+            else:
+                raise BESError("Unknown block")
+        except BESError as e:
+            raise BESError("{:04X}->{}".format(label, e.msg))
 
     def parse_block(self, blocks, data):
         ret = dict()
@@ -145,8 +156,17 @@ class BES(object):
                 else:
                     ret[label].append(self.parse_block_by_label(label, subblock))
             else:
-                print("Error: " + hex(label))
+                raise BESError("Unexpected block {:04X} in this location".format(label))
             start += size
+
+        if start != len(data):
+            raise BESError("Block contains more data than expected")
+
+        for label in blocks:
+            if blocks[label] == BES.BlockPresence.ReqSingle:
+                raise BESError("Required block {:04X} not found in this location".format(label))
+            elif blocks[label] == BES.BlockPresence.ReqMultiple and label not in ret:
+                raise BESError("Required block {:04X} not found in this location".format(label))
 
         return ret
 
@@ -160,7 +180,7 @@ class BES(object):
 
         res = self.parse_block({BES.BlockID.Object   : BES.BlockPresence.OptMultiple,
                                 BES.BlockID.Unk30    : BES.BlockPresence.OptSingle,
-                                0x1000               : BES.BlockPresence.ReqSingle},
+                                0x1000               : BES.BlockPresence.OptSingle},
                                data[8 + name_size:])
 
         for obj in res[BES.BlockID.Object]:
@@ -189,19 +209,22 @@ class BES(object):
         res = self.parse_block({BES.BlockID.Vertices  : BES.BlockPresence.ReqSingle,
                                 BES.BlockID.Faces     : BES.BlockPresence.ReqSingle},
                                data[4:])
+        vertices = res[BES.BlockID.Vertices]
+        faces    = res[BES.BlockID.Faces]
 
-        return  BESMesh(mesh_id, res[BES.BlockID.Vertices], res[BES.BlockID.Faces])
+        if max(max(faces, key=lambda item:item[1])) + 1 != len(vertices):
+            raise BESError("Invalid faces number")
+
+        return BESMesh(mesh_id, vertices, faces)
 
     def parse_block_vertices(self, data):
         (count, size, unknown) = self.unpack("<III", data)
         vertices = []
 
         if size < 12:
-            print("Unsupported size '{}' of vertex struct".format(size))
-            return
+            raise BESError("Unsupported size '{}' of vertex struct".format(size))
         if count * size != len(data[12:]):
-            print("Block size mismatch")
-            return
+            raise BESError("Block size mismatch")
 
         ptr = 12
         for i in range(count):
@@ -216,8 +239,7 @@ class BES(object):
         faces = []
 
         if count * 12 != len(data[4:]):
-            print("Block size mismatch")
-            return
+            raise BESError("Block size mismatch")
 
         ptr = 4
         for i in range(count):
@@ -237,7 +259,7 @@ class BES(object):
         pass
     def parse_block_user_info(self, data):
         pass
-    def parse_block_unk100(self, data):
+    def parse_block_unk1000(self, data):
         pass
 
 class BESImporter(bpy.types.Operator, ImportHelper):
