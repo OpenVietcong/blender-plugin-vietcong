@@ -292,8 +292,9 @@ class BESImporter(bpy.types.Operator, ImportHelper):
             bes = BES(os.path.join(self.directory, f.name))
 
             # Parse all objects in BES file
-            for bes_obj in bes.objects:
-                self.add_object(bes_obj, None)
+            for bes_roots in bes.objects:
+                for bes_obj in bes_roots.children:
+                    self.add_object(bes_obj, None)
 
         return {'FINISHED'}
 
