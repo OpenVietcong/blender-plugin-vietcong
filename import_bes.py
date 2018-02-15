@@ -96,9 +96,9 @@ class BES(object):
 
     def parse_data(self, data):
         try:
-            res = self.parse_block({BES.BlockID.UserInfo : BES.BlockPresence.ReqSingle,
-                                    BES.BlockID.Object   : BES.BlockPresence.ReqSingle},
-                                   data)
+            res = self.parse_blocks({BES.BlockID.UserInfo : BES.BlockPresence.ReqSingle,
+                                     BES.BlockID.Object   : BES.BlockPresence.ReqSingle},
+                                    data)
             self.objects.append(res[BES.BlockID.Object])
         except BESError as e:
             print(e.msg)
@@ -136,7 +136,8 @@ class BES(object):
         except BESError as e:
             raise BESError("{:04X}->{}".format(label, e.msg))
 
-    def parse_block(self, blocks, data):
+    def parse_blocks(self, blocks, data):
+        # Init return values
         ret = dict()
         for label in blocks:
             if blocks[label] == BES.BlockPresence.OptSingle or blocks[label] == BES.BlockPresence.ReqSingle:
@@ -144,6 +145,7 @@ class BES(object):
             else:
                 ret[label] = []
 
+        # Seach for all blocks
         start = 0
         while len(data[start:]) > 0:
             (label, size) = self.parse_block_desc(data[start:])
@@ -163,6 +165,7 @@ class BES(object):
         if start != len(data):
             raise BESError("Block contains more data than expected")
 
+        # Check if all required blocks were found in this block
         for label in blocks:
             if blocks[label] == BES.BlockPresence.ReqSingle:
                 raise BESError("Required block {:04X} not found in this location".format(label))
@@ -177,15 +180,14 @@ class BES(object):
         name = str(name, 'ascii').strip(chr(0))
 
         model = BESObject(name)
-        print("Children: {}, Name({}): {}".format(children, name_size, name))
 
-        res = self.parse_block({BES.BlockID.Object     : BES.BlockPresence.OptMultiple,
-                                BES.BlockID.Properties : BES.BlockPresence.OptSingle,
-                                BES.BlockID.Unk30      : BES.BlockPresence.OptSingle,
-                                BES.BlockID.Unk35      : BES.BlockPresence.OptSingle,
-                                BES.BlockID.Unk38      : BES.BlockPresence.OptSingle,
-                                0x1000                 : BES.BlockPresence.OptSingle},
-                               data[8 + name_size:])
+        res = self.parse_blocks({BES.BlockID.Object     : BES.BlockPresence.OptMultiple,
+                                 BES.BlockID.Properties : BES.BlockPresence.OptSingle,
+                                 BES.BlockID.Unk30      : BES.BlockPresence.OptSingle,
+                                 BES.BlockID.Unk35      : BES.BlockPresence.OptSingle,
+                                 BES.BlockID.Unk38      : BES.BlockPresence.OptSingle,
+                                 0x1000                 : BES.BlockPresence.OptSingle},
+                                data[8 + name_size:])
 
         for obj in res[BES.BlockID.Object]:
             model.children.append(obj)
@@ -202,22 +204,26 @@ class BES(object):
     def parse_block_unk30(self, data):
         (mesh_children,) = self.unpack("<I", data)
 
-        res = self.parse_block({BES.BlockID.Mesh      : BES.BlockPresence.OptMultiple,
-                                BES.BlockID.Properties: BES.BlockPresence.ReqSingle,
-                                BES.BlockID.Unk35     : BES.BlockPresence.ReqSingle,
-                                BES.BlockID.Unk36     : BES.BlockPresence.OptSingle},
-                               data[4:])
+        res = self.parse_blocks({BES.BlockID.Mesh      : BES.BlockPresence.OptMultiple,
+                                 BES.BlockID.Properties: BES.BlockPresence.ReqSingle,
+                                 BES.BlockID.Unk35     : BES.BlockPresence.ReqSingle,
+                                 BES.BlockID.Unk36     : BES.BlockPresence.OptSingle},
+                                data[4:])
+
+        if mesh_children != len(res[BES.BlockID.Mesh]):
+            raise BESError("Number of meshes does not match")
 
         return res
 
     def parse_block_mesh(self, data):
+        """ Parse Mesh block and return BESMesh instance """
         (mesh_id,) = self.unpack("<I", data)
         vertices = None
         faces = None
 
-        res = self.parse_block({BES.BlockID.Vertices  : BES.BlockPresence.ReqSingle,
-                                BES.BlockID.Faces     : BES.BlockPresence.ReqSingle},
-                               data[4:])
+        res = self.parse_blocks({BES.BlockID.Vertices  : BES.BlockPresence.ReqSingle,
+                                 BES.BlockID.Faces     : BES.BlockPresence.ReqSingle},
+                                data[4:])
         vertices = res[BES.BlockID.Vertices]
         faces    = res[BES.BlockID.Faces]
 
@@ -227,6 +233,10 @@ class BES(object):
         return BESMesh(mesh_id, vertices, faces)
 
     def parse_block_vertices(self, data):
+        """
+        Parse Vertices block and return list of tuples.
+        Each tuple means one vertex made of 3 floats (coordinates x, y, z)
+        """
         (count, size, unknown) = self.unpack("<III", data)
         vertices = []
 
@@ -244,6 +254,10 @@ class BES(object):
         return vertices
 
     def parse_block_faces(self, data):
+        """
+        Parse Faces block and return list of tuples.
+        Each tuple means one face made of 3 integers (vertices IDs)
+        """
         (count,) = self.unpack("<I", data)
         faces = []
 
@@ -260,7 +274,12 @@ class BES(object):
 
     def parse_block_properties(self, data):
         pass
+
     def parse_block_unk35(self, data):
+        """ Parse Unk35 block and return object position as tuple (coordinates x, y, z) """
+        if len(data) != 100:
+            raise BESError("Block size mismatch")
+
         return self.unpack("<fff", data)
 
     def parse_block_unk36(self, data):
