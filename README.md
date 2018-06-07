@@ -3,7 +3,7 @@
 This projects aims to support 3D files used by Vietcong in [Blender](https://www.blender.org/).
 Information about the BES format are shared with
 [VC-Browser](https://github.com/sonicpp/VC-Browser) project (specifically the 
-[doc/bes.md](https://github.com/sonicpp/VC-Browser/blob/bes/doc/bes.md)
+[doc/bes.md](https://github.com/sonicpp/VC-Browser/blob/master/doc/bes.md)
 document).
 
 ## Current status
