@@ -5,6 +5,8 @@ Information about the BES format are shared with
 [VC-Browser](https://github.com/sonicpp/VC-Browser) project (specifically the 
 [doc/bes.md](https://github.com/sonicpp/VC-Browser/blob/master/doc/bes.md)
 document).
+See also the official topic at
+[vietcong.info](http://www.vietcong.info/portal/forum/viewthread.php?thread_id=1038).
 
 ## Current status
 * Importing BES files:
