@@ -42,13 +42,28 @@ class BESObject(object):
         self.name = name
         self.children = []
         self.meshes = []
+        self.materials = []
         self.position = (0.0, 0.0, 0.0)
 
 class BESMesh(object):
-    def __init__(self, mesh_id, vertices, faces):
-        self.id = mesh_id
+    def __init__(self, vertices, faces, material):
         self.vertices = vertices
         self.faces = faces
+        self.material = material
+
+class BESMaterial(object):
+    NoneMaterial = 0xFFFFFFFF
+
+    def __init__(self):
+        pass
+
+class BESBitmap(BESMaterial):
+    def __init__(self):
+        pass
+
+class BESPteroMat(BESMaterial):
+    def __init__(self, name):
+        self.name = name
 
 class BES(object):
     class BlockID:
@@ -62,6 +77,9 @@ class BES(object):
         Unk36      = 0x0036
         Unk38      = 0x0038
         UserInfo   = 0x0070
+        Material   = 0x1000
+        Bitmap     = 0x1001
+        PteroMat   = 0x1002
 
     class BlockPresence:
         OptSingle   = 0  # <0;1>
@@ -129,8 +147,12 @@ class BES(object):
                 return self.parse_block_unk38(data)
             elif label == BES.BlockID.UserInfo:
                 return self.parse_block_user_info(data)
-            elif label == 0x1000:
-                return self.parse_block_unk1000(data)
+            elif label == BES.BlockID.Material:
+                return self.parse_block_material(data)
+            elif label == BES.BlockID.Bitmap:
+                return self.parse_block_bitmap(data)
+            elif label == BES.BlockID.PteroMat:
+                return self.parse_block_pteromat(data)
             else:
                 raise BESError("Unknown block")
         except BESError as e:
@@ -145,7 +167,7 @@ class BES(object):
             else:
                 ret[label] = []
 
-        # Seach for all blocks
+        # Search for all blocks
         start = 0
         while len(data[start:]) > 0:
             (label, size) = self.parse_block_desc(data[start:])
@@ -186,7 +208,7 @@ class BES(object):
                                  BES.BlockID.Unk30      : BES.BlockPresence.OptSingle,
                                  BES.BlockID.Unk35      : BES.BlockPresence.OptSingle,
                                  BES.BlockID.Unk38      : BES.BlockPresence.OptSingle,
-                                 0x1000                 : BES.BlockPresence.OptSingle},
+                                 BES.BlockID.Material   : BES.BlockPresence.OptSingle},
                                 data[8 + name_size:])
 
         for obj in res[BES.BlockID.Object]:
@@ -198,6 +220,9 @@ class BES(object):
                 model.meshes = res[BES.BlockID.Unk30][BES.BlockID.Mesh]
             if res[BES.BlockID.Unk30][BES.BlockID.Unk35]:
                 model.position = res[BES.BlockID.Unk30][BES.BlockID.Unk35]
+        if res[BES.BlockID.Material]:
+            model.materials = res[BES.BlockID.Material]
+            # TODO check all children meshes for valid materials
 
         return model
 
@@ -217,7 +242,7 @@ class BES(object):
 
     def parse_block_mesh(self, data):
         """ Parse Mesh block and return BESMesh instance """
-        (mesh_id,) = self.unpack("<I", data)
+        (material,) = self.unpack("<I", data)
         vertices = None
         faces = None
 
@@ -230,7 +255,7 @@ class BES(object):
         if max(max(faces, key=lambda item:item[1])) > len(vertices):
             raise BESError("Invalid faces number")
 
-        return BESMesh(mesh_id, vertices, faces)
+        return BESMesh(vertices, faces, material)
 
     def parse_block_vertices(self, data):
         """
@@ -288,8 +313,30 @@ class BES(object):
         pass
     def parse_block_user_info(self, data):
         pass
-    def parse_block_unk1000(self, data):
-        pass
+
+    def parse_block_material(self, data):
+        (materialCnt,) = self.unpack("<I", data)
+
+        res = self.parse_blocks({BES.BlockID.Bitmap     : BES.BlockPresence.OptMultiple,
+                                 BES.BlockID.PteroMat   : BES.BlockPresence.OptMultiple},
+                                data[4:])
+
+        return res[BES.BlockID.PteroMat]
+
+    def parse_block_bitmap(self, data):
+        (unk1, unk2, bitmaps) = self.unpack("<I4sI", data)
+
+        material = BESBitmap()
+        return material
+
+    def parse_block_pteromat(self, data):
+        (sides, materials, collis_mat, unk4, veget) = self.unpack("<II4sI4s", data)
+        (name_size,) = self.unpack("<I", data[20:])
+        (name,) = self.unpack("<" + str(name_size) + "s", data[24:])
+        name = str(name, 'ascii').strip(chr(0))
+
+        material = BESPteroMat(name)
+        return material
 
 class BESImporter(bpy.types.Operator, ImportHelper):
     bl_idname = "import_mesh.bes"
@@ -312,21 +359,29 @@ class BESImporter(bpy.types.Operator, ImportHelper):
 
             # Parse all objects in BES file
             for bes_roots in bes.objects:
+                # Create materials
+                materials = []
+                for PteroMat in bes_roots.materials:
+                    materials.append(bpy.data.materials.new(PteroMat.name))
+
+                # Create objects
                 for bes_obj in bes_roots.children:
-                    self.add_object(bes_obj, None)
+                    self.add_object(bes_obj, materials, None)
 
         return {'FINISHED'}
 
-    def add_object(self, bes_obj, parent):
+    def add_object(self, bes_obj, materials, parent):
         # Create new object
         bpy_obj = bpy.data.objects.new(bes_obj.name, None)
         bpy_obj.parent = parent
 
         # Since Blender does not allow multiple meshes for single object (while BES does),
         # we have to create seperate object for every mesh.
-        for bes_mesh in bes_obj.meshes:
+        for mesh_id in range(len(bes_obj.meshes)):
+            bes_mesh = bes_obj.meshes[mesh_id]
+
             # In BES the meshes do not have names, so we create one from object name and mesh ID
-            mesh_name = "{}.{:08X}".format(bes_obj.name, bes_mesh.id)
+            mesh_name = "{}.{:08X}".format(bes_obj.name, mesh_id)
 
             # Create new mesh
             bpy_mesh = bpy.data.meshes.new(mesh_name)
@@ -339,11 +394,13 @@ class BESImporter(bpy.types.Operator, ImportHelper):
             mesh_obj = bpy.data.objects.new(mesh_name, bpy_mesh)
             mesh_obj.location = bes_obj.position
             mesh_obj.parent = bpy_obj
+            if bes_mesh.material != BESMaterial.NoneMaterial:
+                mesh_obj.data.materials.append(materials[bes_mesh.material])
             bpy.context.scene.objects.link(mesh_obj)
 
         # Add children
         for bes_child in bes_obj.children:
-            self.add_object(bes_child, bpy_obj)
+            self.add_object(bes_child, materials, bpy_obj)
 
         # Add object into scene
         bpy.context.scene.objects.link(bpy_obj)
