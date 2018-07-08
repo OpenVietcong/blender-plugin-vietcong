@@ -62,8 +62,11 @@ class BESBitmap(BESMaterial):
         pass
 
 class BESPteroMat(BESMaterial):
-    def __init__(self, name):
+    texOffset = 16
+
+    def __init__(self, name, textures):
         self.name = name
+        self.textures = textures
 
 class BES(object):
     class BlockID:
@@ -330,12 +333,22 @@ class BES(object):
         return material
 
     def parse_block_pteromat(self, data):
-        (sides, materials, collis_mat, unk4, veget) = self.unpack("<II4sI4s", data)
+        (sides, texMask, collis_mat, unk4, veget) = self.unpack("<II4sI4s", data)
         (name_size,) = self.unpack("<I", data[20:])
         (name,) = self.unpack("<" + str(name_size) + "s", data[24:])
         name = str(name, 'ascii').strip(chr(0))
 
-        material = BESPteroMat(name)
+        textures = []
+        ptr = 24 + name_size
+        for texID in range(BESPteroMat.texOffset, 32):
+            if texMask & 1 << texID:
+                (coord, tex_name_size) = self.unpack("<II", data[ptr:])
+                (tex_name,) = self.unpack("<" + str(tex_name_size) + "s", data[ptr + 8:])
+                tex_name = str(tex_name, 'ascii').strip(chr(0))
+                textures.append(tex_name)
+                ptr += 8 + tex_name_size
+
+        material = BESPteroMat(name, textures)
         return material
 
 class BESImporter(bpy.types.Operator, ImportHelper):
@@ -351,6 +364,23 @@ class BESImporter(bpy.types.Operator, ImportHelper):
     # Collection of selected files for import
     files = CollectionProperty(name="File name", type=bpy.types.OperatorFileListElement)
 
+    def get_case_insensitive_path(self, dirname, fname):
+        """
+        Returns 'fname' path in 'dirname' directory.
+        If required file is not found, tries it again as case insensitive (finds the first match)
+        """
+        ret_path = None
+
+        if os.path.isfile(os.path.join(dirname, fname)):
+            ret_path = os.path.join(dirname, fname)
+        else:
+            for dir_file in os.listdir(dirname):
+                if dir_file.upper() == fname.upper():
+                    ret_path = os.path.join(dirname, dir_file)
+                    break
+
+        return ret_path
+
     def execute(self, context):
         # Load all selected files
         for f in self.files:
@@ -362,7 +392,19 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                 # Create materials
                 materials = []
                 for PteroMat in bes_roots.materials:
-                    materials.append(bpy.data.materials.new(PteroMat.name))
+                    bpy_mat = bpy.data.materials.new(PteroMat.name)
+                    materials.append(bpy_mat)
+
+                    # Create textures
+                    for tex in PteroMat.textures:
+                        # Since Vietcong is Windows game, we need to work with texture name as
+                        # case insensitive
+                        tex_path = self.get_case_insensitive_path(self.directory, tex)
+                        bpy_tex = bpy.data.textures.new(os.path.splitext(tex)[0], 'IMAGE')
+                        bpy_tex.image = bpy.data.images.load(tex_path)
+
+                        slot = bpy_mat.texture_slots.add()
+                        slot.texture = bpy_tex
 
                 # Create objects
                 for bes_obj in bes_roots.children:
