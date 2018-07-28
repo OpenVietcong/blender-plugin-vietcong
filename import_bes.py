@@ -400,11 +400,14 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                         # Since Vietcong is Windows game, we need to work with texture name as
                         # case insensitive
                         tex_path = self.get_case_insensitive_path(self.directory, tex)
-                        bpy_tex = bpy.data.textures.new(os.path.splitext(tex)[0], 'IMAGE')
-                        bpy_tex.image = bpy.data.images.load(tex_path)
+                        if tex_path != None:
+                            bpy_tex = bpy.data.textures.new(os.path.splitext(tex)[0], 'IMAGE')
+                            bpy_tex.image = bpy.data.images.load(tex_path)
 
-                        slot = bpy_mat.texture_slots.add()
-                        slot.texture = bpy_tex
+                            slot = bpy_mat.texture_slots.add()
+                            slot.texture = bpy_tex
+                        else:
+                            self.report({'ERROR'}, "Texture '{}' not found".format(tex))
 
                 # Create objects
                 for bes_obj in bes_roots.children:
