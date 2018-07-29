@@ -19,7 +19,7 @@ import os
 import struct
 import bpy
 from bpy_extras.io_utils import ImportHelper
-from bpy.props import StringProperty, CollectionProperty
+from bpy.props import StringProperty, CollectionProperty, IntProperty
 
 bl_info = {
     "name"       : "Vietcong BES (.bes)",
@@ -351,18 +351,133 @@ class BES(object):
         material = BESPteroMat(name, textures)
         return material
 
+class AddDirs(bpy.types.Operator):
+    bl_idname = "import_mesh.add_dirs"
+    bl_label = "Add Directories"
+
+    # Collection of currently selected directories and files
+    dir_paths = CollectionProperty(type=bpy.types.PropertyGroup)
+
+    def execute(self, context):
+        tex_dirs = context.active_operator.tex_dirs
+
+        # Fill layout template_list by selected directories by user
+        for tex_dir in self.dir_paths:
+            if tex_dir.name not in (tex_dir.name for tex_dir in tex_dirs):
+                item = tex_dirs.add()
+                item.name = tex_dir.name
+
+        return {'FINISHED'}
+
+class RemoveDir(bpy.types.Operator):
+    bl_idname = "import_mesh.remove_dir"
+    bl_label = "Remove Directory"
+
+    # Index of currently selected directory from template_list
+    index = IntProperty()
+
+    @classmethod
+    def poll(self, context):
+        return len(context.active_operator.tex_dirs) > 0
+
+    def execute(self, context):
+        try:
+            context.active_operator.tex_dirs.remove(self.index)
+        except IndexError:
+            pass
+
+        return {'FINISHED'}
+
 class BESImporter(bpy.types.Operator, ImportHelper):
     bl_idname = "import_mesh.bes"
     bl_label  = "Import BES files"
 
     # Show only "*.bes" files for import
-    filter_glob = StringProperty(default="*.bes", options={'HIDDEN'})
+    filter_glob = StringProperty(
+            default="*.bes",
+            options={'HIDDEN'}
+            )
 
-    # Directory of selected files for import
+    # Active directory
     directory = StringProperty(options={'HIDDEN'})
 
+    # All directories currently chosen by user
+    dirs = CollectionProperty(type=bpy.types.PropertyGroup)
+
     # Collection of selected files for import
-    files = CollectionProperty(name="File name", type=bpy.types.OperatorFileListElement)
+    files = CollectionProperty(
+            name="File name",
+            type=bpy.types.OperatorFileListElement
+            )
+
+    # Properties whose content will be used by template_list
+    # Filled by AddDirs, drew by BESImporter
+    tex_dirs = CollectionProperty(type=bpy.types.PropertyGroup)
+    tex_dirs_index = IntProperty()
+
+    def draw(self, context):
+        layout = self.layout
+
+        # Row for adding/removing dirs where may be located textures
+        row = layout.row(True)
+        row.label("Search directories for textures")
+
+        # Add AddDirs operator into row and fill its props
+        props = row.operator(AddDirs.bl_idname, icon='ZOOMIN', text="")
+        for f in self.dirs:
+            item = props.dir_paths.add()
+            item.name = os.path.join(self.directory, f.name)
+
+        # Add RemoveDir operator into row and fill its props
+        props = row.operator(RemoveDir.bl_idname, icon='ZOOMOUT', text="")
+        props.index = self.tex_dirs_index
+
+        # Show 'tex_dirs' items as a rows in widget list
+        layout.template_list("UI_UL_list", "TexSubDirs", self, "tex_dirs", self, "tex_dirs_index")
+
+    def execute(self, context):
+        search_dirs = [self.directory]
+        search_dirs.extend(d.name for d in self.tex_dirs)
+
+        # Load all selected files
+        for f in self.files:
+            # Parse BES file
+            bes = BES(os.path.join(self.directory, f.name))
+
+            # Parse all objects in BES file
+            for bes_roots in bes.objects:
+                # Create materials
+                materials = []
+                for PteroMat in bes_roots.materials:
+                    bpy_mat = bpy.data.materials.new(PteroMat.name)
+                    materials.append(bpy_mat)
+
+                    # Create textures
+                    for tex_file in PteroMat.textures:
+                        tex_path = None
+
+                        # Since Vietcong is Windows game, we need to work with texture name as
+                        # case insensitive. On top of that, the user has a possibility to choose
+                        # directories where textures may be located
+                        for tex_dir in search_dirs:
+                            tex_path = self.get_case_insensitive_path(tex_dir, tex_file)
+                            if tex_path != None:
+                                break
+
+                        if tex_path != None:
+                            bpy_tex = bpy.data.textures.new(os.path.splitext(tex_file)[0], 'IMAGE')
+                            bpy_tex.image = bpy.data.images.load(tex_path)
+
+                            slot = bpy_mat.texture_slots.add()
+                            slot.texture = bpy_tex
+                        else:
+                            self.report({'ERROR'}, "Texture '{}' not found".format(tex_file))
+
+                # Create objects
+                for bes_obj in bes_roots.children:
+                    self.add_object(bes_obj, materials, None)
+
+        return {'FINISHED'}
 
     def get_case_insensitive_path(self, dirname, fname):
         """
@@ -380,40 +495,6 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                     break
 
         return ret_path
-
-    def execute(self, context):
-        # Load all selected files
-        for f in self.files:
-            # Parse BES file
-            bes = BES(os.path.join(self.directory, f.name))
-
-            # Parse all objects in BES file
-            for bes_roots in bes.objects:
-                # Create materials
-                materials = []
-                for PteroMat in bes_roots.materials:
-                    bpy_mat = bpy.data.materials.new(PteroMat.name)
-                    materials.append(bpy_mat)
-
-                    # Create textures
-                    for tex in PteroMat.textures:
-                        # Since Vietcong is Windows game, we need to work with texture name as
-                        # case insensitive
-                        tex_path = self.get_case_insensitive_path(self.directory, tex)
-                        if tex_path != None:
-                            bpy_tex = bpy.data.textures.new(os.path.splitext(tex)[0], 'IMAGE')
-                            bpy_tex.image = bpy.data.images.load(tex_path)
-
-                            slot = bpy_mat.texture_slots.add()
-                            slot.texture = bpy_tex
-                        else:
-                            self.report({'ERROR'}, "Texture '{}' not found".format(tex))
-
-                # Create objects
-                for bes_obj in bes_roots.children:
-                    self.add_object(bes_obj, materials, None)
-
-        return {'FINISHED'}
 
     def add_object(self, bes_obj, materials, parent):
         # Create new object
