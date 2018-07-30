@@ -69,9 +69,13 @@ class BESPteroMat(BESMaterial):
         self.textures = textures
 
 class BES(object):
+    class Header:
+        sig = b'BES\x00'
+        vers = [b'0100']
+
     class BlockID:
         Object     = 0x0001
-        Unk30      = 0x0030
+        Model      = 0x0030
         Mesh       = 0x0031
         Vertices   = 0x0032
         Faces      = 0x0033
@@ -106,7 +110,15 @@ class BES(object):
 
     def read_header(self):
         data = self.f.read(0x10)
-        self.unpack("<5s4sI3c", data)
+        (sig, ver, unk1, unk2) = self.unpack("<4s4sII", data)
+
+        if sig != BES.Header.sig:
+            raise BESError("Invalid BES header signature")
+
+        if ver not in BES.Header.vers:
+            raise BESError("Unsupported BES version: {}".format(ver))
+
+        return ver
 
     def read_preview(self):
         self.f.read(0x3000)
@@ -116,14 +128,10 @@ class BES(object):
         self.parse_data(data)
 
     def parse_data(self, data):
-        try:
-            res = self.parse_blocks({BES.BlockID.UserInfo : BES.BlockPresence.ReqSingle,
-                                     BES.BlockID.Object   : BES.BlockPresence.ReqSingle},
-                                    data)
-            self.objects.append(res[BES.BlockID.Object])
-        except BESError as e:
-            print(e.msg)
-            print("Please report an issue at https://github.com/sonicpp/vietcong-blender-plugins/issues")
+        res = self.parse_blocks({BES.BlockID.Object   : BES.BlockPresence.ReqSingle,
+                                 BES.BlockID.UserInfo : BES.BlockPresence.ReqSingle},
+                                data)
+        self.objects.append(res[BES.BlockID.Object])
 
     def parse_block_desc(self, data):
         return self.unpack("<II", data)
@@ -132,8 +140,8 @@ class BES(object):
         try:
             if   label == BES.BlockID.Object:
                 return self.parse_block_object(data)
-            elif label == BES.BlockID.Unk30:
-                return self.parse_block_unk30(data)
+            elif label == BES.BlockID.Model:
+                return self.parse_block_model(data)
             elif label == BES.BlockID.Mesh:
                 return self.parse_block_mesh(data)
             elif label == BES.BlockID.Vertices:
@@ -207,29 +215,32 @@ class BES(object):
         model = BESObject(name)
 
         res = self.parse_blocks({BES.BlockID.Object     : BES.BlockPresence.OptMultiple,
+                                 BES.BlockID.Model      : BES.BlockPresence.OptSingle,
                                  BES.BlockID.Properties : BES.BlockPresence.OptSingle,
-                                 BES.BlockID.Unk30      : BES.BlockPresence.OptSingle,
                                  BES.BlockID.Unk35      : BES.BlockPresence.OptSingle,
                                  BES.BlockID.Unk38      : BES.BlockPresence.OptSingle,
                                  BES.BlockID.Material   : BES.BlockPresence.OptSingle},
                                 data[8 + name_size:])
 
+        if len(res[BES.BlockID.Object]) != children:
+            raise BESError("Number of object children does not match")
+
         for obj in res[BES.BlockID.Object]:
             model.children.append(obj)
         if res[BES.BlockID.Unk35]:
             model.position = res[BES.BlockID.Unk35]
-        if res[BES.BlockID.Unk30]:
-            if res[BES.BlockID.Unk30][BES.BlockID.Mesh]:
-                model.meshes = res[BES.BlockID.Unk30][BES.BlockID.Mesh]
-            if res[BES.BlockID.Unk30][BES.BlockID.Unk35]:
-                model.position = res[BES.BlockID.Unk30][BES.BlockID.Unk35]
+        if res[BES.BlockID.Model]:
+            if res[BES.BlockID.Model][BES.BlockID.Mesh]:
+                model.meshes = res[BES.BlockID.Model][BES.BlockID.Mesh]
+            if res[BES.BlockID.Model][BES.BlockID.Unk35]:
+                model.position = res[BES.BlockID.Model][BES.BlockID.Unk35]
         if res[BES.BlockID.Material]:
             model.materials = res[BES.BlockID.Material]
             # TODO check all children meshes for valid materials
 
         return model
 
-    def parse_block_unk30(self, data):
+    def parse_block_model(self, data):
         (mesh_children,) = self.unpack("<I", data)
 
         res = self.parse_blocks({BES.BlockID.Mesh      : BES.BlockPresence.OptMultiple,
@@ -265,11 +276,12 @@ class BES(object):
         Parse Vertices block and return list of tuples.
         Each tuple means one vertex made of 3 floats (coordinates x, y, z)
         """
-        (count, size, unknown) = self.unpack("<III", data)
+        (count, size, vType) = self.unpack("<III", data)
         vertices = []
+        texCnt = (vType >> 8) & 0xFF
 
-        if size < 12:
-            raise BESError("Unsupported size '{}' of vertex struct".format(size))
+        if 24 + 8 * texCnt != size:
+            raise BESError("Vertex size ({}) do not match".format(size))
         if count * size != len(data[12:]):
             raise BESError("Block size mismatch")
 
@@ -323,6 +335,9 @@ class BES(object):
         res = self.parse_blocks({BES.BlockID.Bitmap     : BES.BlockPresence.OptMultiple,
                                  BES.BlockID.PteroMat   : BES.BlockPresence.OptMultiple},
                                 data[4:])
+
+        if materialCnt != len(res[BES.BlockID.Bitmap]) + len(res[BES.BlockID.PteroMat]):
+            raise BESError("Number of meshes does not match")
 
         return res[BES.BlockID.PteroMat]
 
@@ -438,12 +453,20 @@ class BESImporter(bpy.types.Operator, ImportHelper):
     def execute(self, context):
         search_dirs = [self.directory]
         search_dirs.extend(d.name for d in self.tex_dirs)
+        models = []
 
-        # Load all selected files
+        # Parse all selected files
         for f in self.files:
             # Parse BES file
-            bes = BES(os.path.join(self.directory, f.name))
+            try:
+                bes = BES(os.path.join(self.directory, f.name))
+                models.append(bes)
+            except BESError as e:
+                print(e.msg)
+                print("Please report an issue at https://github.com/sonicpp/vietcong-blender-plugins/issues")
 
+        # Load all parsed models
+        for bes in models:
             # Parse all objects in BES file
             for bes_roots in bes.objects:
                 # Create materials
