@@ -20,6 +20,7 @@ import struct
 import bpy
 from bpy_extras.io_utils import ImportHelper
 from bpy.props import StringProperty, CollectionProperty, IntProperty
+from mathutils import Euler
 
 bl_info = {
     "name"       : "Vietcong BES (.bes)",
@@ -74,19 +75,19 @@ class BES(object):
         vers = [b'0100']
 
     class BlockID:
-        Object     = 0x0001
-        Model      = 0x0030
-        Mesh       = 0x0031
-        Vertices   = 0x0032
-        Faces      = 0x0033
-        Properties = 0x0034
-        Unk35      = 0x0035
-        Unk36      = 0x0036
-        Unk38      = 0x0038
-        UserInfo   = 0x0070
-        Material   = 0x1000
-        Bitmap     = 0x1001
-        PteroMat   = 0x1002
+        Object         = 0x0001
+        Model          = 0x0030
+        Mesh           = 0x0031
+        Vertices       = 0x0032
+        Faces          = 0x0033
+        Properties     = 0x0034
+        Transformation = 0x0035
+        Unk36          = 0x0036
+        Unk38          = 0x0038
+        UserInfo       = 0x0070
+        Material       = 0x1000
+        Bitmap         = 0x1001
+        PteroMat       = 0x1002
 
     class BlockPresence:
         OptSingle   = 0  # <0;1>
@@ -150,8 +151,8 @@ class BES(object):
                 return self.parse_block_faces(data)
             elif label == BES.BlockID.Properties:
                 return self.parse_block_properties(data)
-            elif label == BES.BlockID.Unk35:
-                return self.parse_block_unk35(data)
+            elif label == BES.BlockID.Transformation:
+                return self.parse_block_transformation(data)
             elif label == BES.BlockID.Unk36:
                 return self.parse_block_unk36(data)
             elif label == BES.BlockID.Unk38:
@@ -214,12 +215,12 @@ class BES(object):
 
         model = BESObject(name)
 
-        res = self.parse_blocks({BES.BlockID.Object     : BES.BlockPresence.OptMultiple,
-                                 BES.BlockID.Model      : BES.BlockPresence.OptSingle,
-                                 BES.BlockID.Properties : BES.BlockPresence.OptSingle,
-                                 BES.BlockID.Unk35      : BES.BlockPresence.OptSingle,
-                                 BES.BlockID.Unk38      : BES.BlockPresence.OptSingle,
-                                 BES.BlockID.Material   : BES.BlockPresence.OptSingle},
+        res = self.parse_blocks({BES.BlockID.Object         : BES.BlockPresence.OptMultiple,
+                                 BES.BlockID.Model          : BES.BlockPresence.OptSingle,
+                                 BES.BlockID.Properties     : BES.BlockPresence.OptSingle,
+                                 BES.BlockID.Transformation : BES.BlockPresence.OptSingle,
+                                 BES.BlockID.Unk38          : BES.BlockPresence.OptSingle,
+                                 BES.BlockID.Material       : BES.BlockPresence.OptSingle},
                                 data[8 + name_size:])
 
         if len(res[BES.BlockID.Object]) != children:
@@ -227,13 +228,13 @@ class BES(object):
 
         for obj in res[BES.BlockID.Object]:
             model.children.append(obj)
-        if res[BES.BlockID.Unk35]:
-            model.position = res[BES.BlockID.Unk35]
+        if res[BES.BlockID.Transformation]:
+            (model.translation, model.rotation, model.scale) = res[BES.BlockID.Transformation]
         if res[BES.BlockID.Model]:
             if res[BES.BlockID.Model][BES.BlockID.Mesh]:
                 model.meshes = res[BES.BlockID.Model][BES.BlockID.Mesh]
-            if res[BES.BlockID.Model][BES.BlockID.Unk35]:
-                model.position = res[BES.BlockID.Model][BES.BlockID.Unk35]
+            if res[BES.BlockID.Model][BES.BlockID.Transformation]:
+                (model.translation, model.rotation, model.scale) = res[BES.BlockID.Model][BES.BlockID.Transformation]
         if res[BES.BlockID.Material]:
             model.materials = res[BES.BlockID.Material]
             # TODO check all children meshes for valid materials
@@ -243,10 +244,10 @@ class BES(object):
     def parse_block_model(self, data):
         (mesh_children,) = self.unpack("<I", data)
 
-        res = self.parse_blocks({BES.BlockID.Mesh      : BES.BlockPresence.OptMultiple,
-                                 BES.BlockID.Properties: BES.BlockPresence.ReqSingle,
-                                 BES.BlockID.Unk35     : BES.BlockPresence.ReqSingle,
-                                 BES.BlockID.Unk36     : BES.BlockPresence.OptSingle},
+        res = self.parse_blocks({BES.BlockID.Mesh           : BES.BlockPresence.OptMultiple,
+                                 BES.BlockID.Properties     : BES.BlockPresence.ReqSingle,
+                                 BES.BlockID.Transformation : BES.BlockPresence.ReqSingle,
+                                 BES.BlockID.Unk36          : BES.BlockPresence.OptSingle},
                                 data[4:])
 
         if mesh_children != len(res[BES.BlockID.Mesh]):
@@ -306,8 +307,8 @@ class BES(object):
 
         ptr = 4
         for i in range(count):
-            (a, b, c) = self.unpack("<III", data[ptr:])
-            faces.append((a,b,c))
+            face = self.unpack("<III", data[ptr:])
+            faces.append(face)
             ptr += 12
 
         return faces
@@ -315,12 +316,19 @@ class BES(object):
     def parse_block_properties(self, data):
         pass
 
-    def parse_block_unk35(self, data):
-        """ Parse Unk35 block and return object position as tuple (coordinates x, y, z) """
+    def parse_block_transformation(self, data):
+        """
+        Parse Transformation block and return tuple of tuples - translation, rotation, scale.
+        Each tuple means tranformation values (x, y, z).
+        """
         if len(data) != 100:
             raise BESError("Block size mismatch")
 
-        return self.unpack("<fff", data)
+        translation = self.unpack("<fff", data[00:12])
+        rotation    = self.unpack("<fff", data[12:24])
+        scale       = self.unpack("<fff", data[24:36])
+
+        return (translation, rotation, scale)
 
     def parse_block_unk36(self, data):
         pass
@@ -535,17 +543,21 @@ class BESImporter(bpy.types.Operator, ImportHelper):
             # Create new mesh
             bpy_mesh = bpy.data.meshes.new(mesh_name)
 
-            # Update mesh data
-            bpy_mesh.from_pydata(bes_mesh.vertices, [], bes_mesh.faces)
-            bpy_mesh.update(calc_edges = True)
-
             # Create new object from mesh and add it into scene
             mesh_obj = bpy.data.objects.new(mesh_name, bpy_mesh)
-            mesh_obj.location = bes_obj.position
             mesh_obj.parent = bpy_obj
             if bes_mesh.material != BESMaterial.NoneMaterial:
                 mesh_obj.data.materials.append(materials[bes_mesh.material])
             bpy.context.scene.objects.link(mesh_obj)
+
+            # Update object data
+            mesh_obj.location = bes_obj.translation
+            mesh_obj.rotation_euler = Euler(bes_obj.rotation, 'XYZ')
+            mesh_obj.scale = bes_obj.scale
+
+            # Update mesh data
+            bpy_mesh.from_pydata(bes_mesh.vertices, [], bes_mesh.faces)
+            bpy_mesh.update(calc_edges = True)
 
         # Add children
         for bes_child in bes_obj.children:
