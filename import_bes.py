@@ -44,7 +44,9 @@ class BESObject(object):
         self.children = []
         self.meshes = []
         self.materials = []
-        self.position = (0.0, 0.0, 0.0)
+        self.translation = (0.0, 0.0, 0.0)
+        self.rotation    = (0.0, 0.0, 0.0)
+        self.scale       = (1.0, 1.0, 1.0)
 
 class BESMesh(object):
     def __init__(self, vertices, faces, material):
@@ -60,19 +62,23 @@ class BESVertex(object):
 class BESMaterial(object):
     NoneMaterial = 0xFFFFFFFF
 
-    def __init__(self):
-        pass
+    def __init__(self, textures):
+        self.textures = textures
 
 class BESBitmap(BESMaterial):
-    def __init__(self):
-        pass
+    texOffset = 0
+    texCnt    = 12
+
+    def __init__(self, textures):
+        super().__init__(textures)
 
 class BESPteroMat(BESMaterial):
     texOffset = 16
+    texCnt    = 8
 
     def __init__(self, name, textures):
+        super().__init__(textures)
         self.name = name
-        self.textures = textures
 
 class BES(object):
     class Header:
@@ -186,7 +192,7 @@ class BES(object):
 
         # Search for all blocks
         start = 0
-        while len(data[start:]) > 0:
+        while len(data[start:]) > 8:
             (label, size) = self.parse_block_desc(data[start:])
 
             if label in blocks:
@@ -354,21 +360,40 @@ class BES(object):
 
     def parse_block_material(self, data):
         (materialCnt,) = self.unpack("<I", data)
+        materials = []
 
-        res = self.parse_blocks({BES.BlockID.Bitmap     : BES.BlockPresence.OptMultiple,
-                                 BES.BlockID.PteroMat   : BES.BlockPresence.OptMultiple},
-                                data[4:])
+        # Info about materials order must preserve, therefore we can not use parse_blocks
+        # func, instead of this we use parse_block_by_label directly
+        start = 4
+        for matID in range(materialCnt):
+            (label, size) = self.parse_block_desc(data[start:])
 
-        if materialCnt != len(res[BES.BlockID.Bitmap]) + len(res[BES.BlockID.PteroMat]):
+            if label not in [BES.BlockID.Bitmap, BES.BlockID.PteroMat]:
+                raise BESError("Invalid material")
+
+            subblock = data[start + 8: start + size]
+            materials.append(self.parse_block_by_label(label, subblock))
+            start += size
+
+        if materialCnt != len(materials):
             raise BESError("Number of meshes does not match")
 
-        return res[BES.BlockID.PteroMat]
+        return materials
 
     def parse_block_bitmap(self, data):
-        (unk1, unk2, bitmaps) = self.unpack("<I4sI", data)
+        (unk1, unk2, texMask) = self.unpack("<I4sI", data)
 
-        material = BESBitmap()
-        return material
+        textures = []
+        ptr = 12
+        for texID in range(BESBitmap.texOffset, BESBitmap.texOffset + BESBitmap.texCnt):
+            if texMask & 1 << texID:
+                (tex_name_size, coord) = self.unpack("<II", data[ptr:])
+                (tex_name,) = self.unpack("<" + str(tex_name_size) + "s", data[ptr + 8:])
+                tex_name = str(tex_name, 'ascii').strip(chr(0))
+                textures.append(tex_name)
+                ptr += 8 + tex_name_size
+
+        return BESBitmap(textures)
 
     def parse_block_pteromat(self, data):
         (sides, texMask, collis_mat, unk4, veget) = self.unpack("<II4sI4s", data)
@@ -378,7 +403,7 @@ class BES(object):
 
         textures = []
         ptr = 24 + name_size
-        for texID in range(BESPteroMat.texOffset, 32):
+        for texID in range(BESPteroMat.texOffset, BESPteroMat.texOffset + BESPteroMat.texCnt):
             if texMask & 1 << texID:
                 (coord, tex_name_size) = self.unpack("<II", data[ptr:])
                 (tex_name,) = self.unpack("<" + str(tex_name_size) + "s", data[ptr + 8:])
@@ -386,8 +411,7 @@ class BES(object):
                 textures.append(tex_name)
                 ptr += 8 + tex_name_size
 
-        material = BESPteroMat(name, textures)
-        return material
+        return BESPteroMat(name, textures)
 
 class AddDirs(bpy.types.Operator):
     bl_idname = "import_mesh.add_dirs"
@@ -494,12 +518,13 @@ class BESImporter(bpy.types.Operator, ImportHelper):
             for bes_roots in bes.objects:
                 # Create materials
                 materials = []
-                for PteroMat in bes_roots.materials:
-                    bpy_mat = bpy.data.materials.new(PteroMat.name)
+                for mat in bes_roots.materials:
+                    name = mat.name if isinstance(mat, BESPteroMat) else "bitmap"
+                    bpy_mat = bpy.data.materials.new(name)
                     materials.append(bpy_mat)
 
                     # Create textures
-                    for tex_file in PteroMat.textures:
+                    for tex_file in mat.textures:
                         tex_path = None
 
                         # Since Vietcong is Windows game, we need to work with texture name as
@@ -580,9 +605,10 @@ class BESImporter(bpy.types.Operator, ImportHelper):
             uvtex.name = "uv-"+mesh_name
             uvlayer = bpy_mesh.uv_layers[uvtex.name]
 
-            for polygon in bpy_mesh.polygons:
-                for vert, loop in zip(polygon.vertices, polygon.loop_indices):
-                    uvlayer.data[loop].uv = Vector(*bes_mesh.vertices[vert].uv)
+            if len(bes_mesh.vertices) > 0 and len(bes_mesh.vertices[0].uv) > 0:
+                for polygon in bpy_mesh.polygons:
+                    for vert, loop in zip(polygon.vertices, polygon.loop_indices):
+                        uvlayer.data[loop].uv = Vector(*bes_mesh.vertices[vert].uv)
 
             uvtex.active = True
 
