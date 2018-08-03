@@ -20,7 +20,7 @@ import struct
 import bpy
 from bpy_extras.io_utils import ImportHelper
 from bpy.props import StringProperty, CollectionProperty, IntProperty
-from mathutils import Euler
+from mathutils import Euler, Vector
 
 bl_info = {
     "name"       : "Vietcong BES (.bes)",
@@ -51,6 +51,11 @@ class BESMesh(object):
         self.vertices = vertices
         self.faces = faces
         self.material = material
+
+class BESVertex(object):
+    def __init__(self, coord, uv = []):
+        self.coord = coord
+        self.uv = uv
 
 class BESMaterial(object):
     NoneMaterial = 0xFFFFFFFF
@@ -278,8 +283,8 @@ class BES(object):
         Each tuple means one vertex made of 3 floats (coordinates x, y, z)
         """
         (count, size, vType) = self.unpack("<III", data)
-        vertices = []
         texCnt = (vType >> 8) & 0xFF
+        vertices = []
 
         if 24 + 8 * texCnt != size:
             raise BESError("Vertex size ({}) do not match".format(size))
@@ -288,9 +293,19 @@ class BES(object):
 
         ptr = 12
         for i in range(count):
-            (x,y,z, unk) = self.unpack("<fff" + str(size-12) + "s", data[ptr:])
-            vertices.append((x,y,z))
-            ptr += size
+            coord = self.unpack("<fff", data[ptr:])
+            ptr += 12
+
+            # Skip unknown data
+            ptr += 12
+
+            uv_array = []
+            for texID in range(texCnt):
+                uv = self.unpack("<ff", data[ptr:])
+                uv_array.append(uv)
+                ptr += 8
+
+            vertices.append(BESVertex(coord, uv_array))
 
         return vertices
 
@@ -550,14 +565,26 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                 mesh_obj.data.materials.append(materials[bes_mesh.material])
             bpy.context.scene.objects.link(mesh_obj)
 
-            # Update object data
+            # Apply translation, rotation and scale
             mesh_obj.location = bes_obj.translation
             mesh_obj.rotation_euler = Euler(bes_obj.rotation, 'XYZ')
             mesh_obj.scale = bes_obj.scale
 
             # Update mesh data
-            bpy_mesh.from_pydata(bes_mesh.vertices, [], bes_mesh.faces)
+            mesh_coords = list(vert.coord for vert in bes_mesh.vertices)
+            bpy_mesh.from_pydata(mesh_coords, [], bes_mesh.faces)
             bpy_mesh.update(calc_edges = True)
+
+            # Apply UV mapping
+            uvtex = bpy_mesh.uv_textures.new()
+            uvtex.name = "uv-"+mesh_name
+            uvlayer = bpy_mesh.uv_layers[uvtex.name]
+
+            for polygon in bpy_mesh.polygons:
+                for vert, loop in zip(polygon.vertices, polygon.loop_indices):
+                    uvlayer.data[loop].uv = Vector(*bes_mesh.vertices[vert].uv)
+
+            uvtex.active = True
 
         # Add children
         for bes_child in bes_obj.children:
