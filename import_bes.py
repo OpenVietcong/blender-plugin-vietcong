@@ -622,7 +622,9 @@ class BESImporter(bpy.types.Operator, ImportHelper):
             for polygon in bpy_mesh.polygons:
                 for vert, loop in zip(polygon.vertices, polygon.loop_indices):
                     for idx, tex in enumerate(bes_mats[bes_mesh.material].textures):
-                        uvlayers[idx].data[loop].uv = Vector(bes_mesh.vertices[vert].uv[idx])
+                        uv_vect = Vector(bes_mesh.vertices[vert].uv[idx])
+                        uv_vect.y = 1.0 - uv_vect.y # Convert UV coords from BES to Blender
+                        uvlayers[idx].data[loop].uv = uv_vect
 
         # Add children
         for bes_child in bes_obj.children:
