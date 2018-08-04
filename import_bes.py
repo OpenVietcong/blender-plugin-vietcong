@@ -530,11 +530,11 @@ class BESImporter(bpy.types.Operator, ImportHelper):
             # Parse all objects in BES file
             for bes_roots in bes.objects:
                 # Create materials
-                materials = []
+                bpy_materials = []
                 for mat in bes_roots.materials:
                     name = mat.name if isinstance(mat, BESPteroMat) else "bitmap"
                     bpy_mat = bpy.data.materials.new(name)
-                    materials.append(bpy_mat)
+                    bpy_materials.append(bpy_mat)
 
                     # Create textures
                     for tex_file in mat.textures:
@@ -568,11 +568,11 @@ class BESImporter(bpy.types.Operator, ImportHelper):
 
                 # Create objects
                 for bes_obj in bes_roots.children:
-                    self.add_object(bes_obj, materials, None)
+                    self.add_object(bes_obj, bpy_materials, bes_roots.materials, None)
 
         return {'FINISHED'}
 
-    def add_object(self, bes_obj, materials, parent):
+    def add_object(self, bes_obj, bpy_mats, bes_mats, parent):
         # Create new object
         bpy_obj = bpy.data.objects.new(bes_obj.name, None)
         bpy_obj.parent = parent
@@ -592,7 +592,7 @@ class BESImporter(bpy.types.Operator, ImportHelper):
             mesh_obj = bpy.data.objects.new(mesh_name, bpy_mesh)
             mesh_obj.parent = bpy_obj
             if bes_mesh.material != BESMaterial.NoneMaterial:
-                mesh_obj.data.materials.append(materials[bes_mesh.material])
+                mesh_obj.data.materials.append(bpy_mats[bes_mesh.material])
             bpy.context.scene.objects.link(mesh_obj)
 
             # Apply translation, rotation and scale
@@ -606,20 +606,27 @@ class BESImporter(bpy.types.Operator, ImportHelper):
             bpy_mesh.update(calc_edges = True)
 
             # Apply UV mapping
-            uvtex = bpy_mesh.uv_textures.new()
-            uvtex.name = "uv-"+mesh_name
-            uvlayer = bpy_mesh.uv_layers[uvtex.name]
+            uvtexs = []
+            uvlayers = []
+            # Create uv_texture for all material textures
+            for idx, tex in enumerate(bes_mats[bes_mesh.material].textures):
+                uvtex = bpy_mesh.uv_textures.new()
+                uvtex.name = "{}-uv{}".format(mesh_name, idx)
+                uvtex.active = True
+                uvlayer = bpy_mesh.uv_layers[uvtex.name]
 
-            if len(bes_mesh.vertices) > 0 and len(bes_mesh.vertices[0].uv) > 0:
-                for polygon in bpy_mesh.polygons:
-                    for vert, loop in zip(polygon.vertices, polygon.loop_indices):
-                        uvlayer.data[loop].uv = Vector(*bes_mesh.vertices[vert].uv)
+                uvtexs.append(uvtex)
+                uvlayers.append(uvlayer)
 
-            uvtex.active = True
+            # Update uv data for all vertices/textures
+            for polygon in bpy_mesh.polygons:
+                for vert, loop in zip(polygon.vertices, polygon.loop_indices):
+                    for idx, tex in enumerate(bes_mats[bes_mesh.material].textures):
+                        uvlayers[idx].data[loop].uv = Vector(bes_mesh.vertices[vert].uv[idx])
 
         # Add children
         for bes_child in bes_obj.children:
-            self.add_object(bes_child, materials, bpy_obj)
+            self.add_object(bes_child, bpy_mats, bes_mats, bpy_obj)
 
         # Add object into scene
         bpy.context.scene.objects.link(bpy_obj)
