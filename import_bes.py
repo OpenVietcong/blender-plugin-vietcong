@@ -18,8 +18,9 @@
 import os
 import struct
 import bpy
+import functools
 from bpy_extras.io_utils import ImportHelper
-from bpy.props import StringProperty, CollectionProperty, IntProperty
+from bpy.props import StringProperty, CollectionProperty, IntProperty, BoolProperty
 from mathutils import Euler, Vector
 
 bl_info = {
@@ -61,6 +62,8 @@ class BESVertex(object):
 
 class BESMaterial(object):
     NoneMaterial = 0xFFFFFFFF
+    # Texture extensions used by engine (ordered by priority)
+    TexExtensions = ["DDS", "TGA", "BMP"]
 
     def __init__(self, textures):
         self.textures = textures
@@ -463,6 +466,13 @@ class BESImporter(bpy.types.Operator, ImportHelper):
     # Active directory
     directory = StringProperty(options={'HIDDEN'})
 
+    # Ignore texture extensions checkbox
+    ext_ignore = BoolProperty(
+            name="Ignore texture extensions",
+            description="Load texture by given name with any of these extensions: dds, tga, bmp",
+            default=False,
+            )
+
     # All directories currently chosen by user
     dirs = CollectionProperty(type=bpy.types.PropertyGroup)
 
@@ -479,6 +489,9 @@ class BESImporter(bpy.types.Operator, ImportHelper):
 
     def draw(self, context):
         layout = self.layout
+
+        # Show checkbox for ignoring extensions
+        layout.prop(self, "ext_ignore")
 
         # Row for adding/removing dirs where may be located textures
         row = layout.row(True)
@@ -525,18 +538,27 @@ class BESImporter(bpy.types.Operator, ImportHelper):
 
                     # Create textures
                     for tex_file in mat.textures:
-                        tex_path = None
+                        tex_paths = []
+                        # Search for files with any extension supported by
+                        # PteroEngine (which is BESMaterial.TexExtensions) if users
+                        # chose to ignore extensions
+                        tex_exts = BESMaterial.TexExtensions if self.ext_ignore else []
 
                         # Since Vietcong is Windows game, we need to work with texture name as
                         # case insensitive. On top of that, the user has a possibility to choose
                         # directories where textures may be located
                         for tex_dir in search_dirs:
-                            tex_path = self.get_case_insensitive_path(tex_dir, tex_file)
-                            if tex_path != None:
-                                break
+                            tex_paths.extend(get_case_insensitive_path(tex_dir, tex_file, tex_exts))
 
-                        if tex_path != None:
+                        if len(tex_paths) != 0:
                             bpy_tex = bpy.data.textures.new(os.path.splitext(tex_file)[0], 'IMAGE')
+
+                            # Sort found textures by extension (PteroEngine requires following
+                            # priority: dds, tga, bmp)
+                            tex_paths.sort(key=functools.cmp_to_key(sort_ext))
+
+                            # Simply choose any texture with extension of the highest priority
+                            tex_path = ".".join(tex_paths[0])
                             bpy_tex.image = bpy.data.images.load(tex_path)
 
                             slot = bpy_mat.texture_slots.add()
@@ -549,23 +571,6 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                     self.add_object(bes_obj, materials, None)
 
         return {'FINISHED'}
-
-    def get_case_insensitive_path(self, dirname, fname):
-        """
-        Returns 'fname' path in 'dirname' directory.
-        If required file is not found, tries it again as case insensitive (finds the first match)
-        """
-        ret_path = None
-
-        if os.path.isfile(os.path.join(dirname, fname)):
-            ret_path = os.path.join(dirname, fname)
-        else:
-            for dir_file in os.listdir(dirname):
-                if dir_file.upper() == fname.upper():
-                    ret_path = os.path.join(dirname, dir_file)
-                    break
-
-        return ret_path
 
     def add_object(self, bes_obj, materials, parent):
         # Create new object
@@ -618,6 +623,42 @@ class BESImporter(bpy.types.Operator, ImportHelper):
 
         # Add object into scene
         bpy.context.scene.objects.link(bpy_obj)
+
+def get_case_insensitive_path(dirname, tex, tex_exts = []):
+    """
+    Returns list of found files. Each file is a tuple of (full path, extension)
+    """
+    file_paths = []
+    tex_name = os.path.splitext(tex)[0].upper()
+
+    # If there are not given required extensions, we will take one from texture name
+    if len(tex_exts) == 0:
+        tex_exts.append(os.path.splitext(tex)[1].strip('.').upper())
+
+    for dir_file in os.listdir(dirname):
+        (f_name, f_ext) = os.path.splitext(dir_file)
+        f_ext = f_ext.strip(".")
+
+        if f_name.upper() == tex_name and f_ext.upper() in tex_exts:
+            file_paths.append((os.path.join(dirname, f_name), f_ext))
+
+    return file_paths
+
+def sort_ext(a, b):
+    """
+    Sort tuples (full path, extension) by extension.
+    Priority of extensions is given by BESMaterial.TexExtensions array
+    """
+    ext_array = BESMaterial.TexExtensions
+    i = ext_array.index(a[1]) if a[1] in ext_array else len(ext_array)
+    j = ext_array.index(b[1]) if b[1] in ext_array else len(ext_array)
+
+    if i > j:
+        return 1
+    elif i < j:
+        return -1
+    else:
+        return 0
 
 def menu_import_bes(self, context):
     self.layout.operator(BESImporter.bl_idname, text="BES (.bes)")
