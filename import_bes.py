@@ -30,7 +30,7 @@ bl_info = {
     "blender"    : (2, 70, 0),
     "location"   : "File > Import > BES (.bes)",
     "description": "Import Vietcong BES files",
-    "wiki_url"   : "https://github.com/sonicpp/vietcong-blender-plugins",
+    "wiki_url"   : "https://github.com/OpenVietcong/blender-plugin-vietcong",
     "category"   : "Import-Export",
 }
 
