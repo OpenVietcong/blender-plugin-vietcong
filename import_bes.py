@@ -26,7 +26,7 @@ from mathutils import Euler, Vector
 bl_info = {
     "name"       : "Vietcong BES (.bes)",
     "author"     : "Jan Havran",
-    "version"    : (0, 1),
+    "version"    : (0, 2),
     "blender"    : (2, 70, 0),
     "location"   : "File > Import > BES (.bes)",
     "description": "Import Vietcong BES files",
