@@ -15,8 +15,6 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
-test
-
 import os
 import struct
 import bpy
