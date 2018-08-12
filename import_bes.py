@@ -534,6 +534,8 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                 for mat in bes_roots.materials:
                     name = mat.name if isinstance(mat, BESPteroMat) else "bitmap"
                     bpy_mat = bpy.data.materials.new(name)
+                    bpy_mat.use_transparency = True
+                    bpy_mat.alpha = 0.0
                     bpy_materials.append(bpy_mat)
 
                     # Create textures
@@ -563,6 +565,8 @@ class BESImporter(bpy.types.Operator, ImportHelper):
 
                             slot = bpy_mat.texture_slots.add()
                             slot.texture = bpy_tex
+                            slot.use_map_alpha = True
+                            slot.alpha_factor = 1.0
                         else:
                             self.report({'ERROR'}, "Texture '{}' not found".format(tex_file))
 

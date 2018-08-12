@@ -57,4 +57,6 @@ but user can add more directories where import plugin will look for BES textures
 * Sometimes texture extension in file system differs with extension from  BES file.
 For that case, user can choose whether import plugin will ignore texture extensions or not.
 In that case, plugin will search for textures with any supported extension in following order: DDS, TGA, BMP (like PteroEngine does).
+* Script will set alpha transparency of every material to 0.0 and alpha factor of every texture to 1.0.
+This is necessary to do to achieve the same rendering result in Blender like in PteroEngine.
 
