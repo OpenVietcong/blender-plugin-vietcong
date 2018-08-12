@@ -54,6 +54,9 @@ In Import file browser you have an opportunity to select additionale directories
 * BES contains names of used textures, but not their location.
 Import script search for those textures in directory where is imported BES file located,
 but user can add more directories where import plugin will look for BES textures.
+* Model textures can be splitted over several directories and subdirectories.
+To make importing easier to user, script offers the opportunity to enable searching textures recursively in selected directories.
+However, this operation may be slow.
 * Sometimes texture extension in file system differs with extension from  BES file.
 For that case, user can choose whether import plugin will ignore texture extensions or not.
 In that case, plugin will search for textures with any supported extension in following order: DDS, TGA, BMP (like PteroEngine does).

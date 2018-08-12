@@ -466,8 +466,15 @@ class BESImporter(bpy.types.Operator, ImportHelper):
     # Active directory
     directory = StringProperty(options={'HIDDEN'})
 
+    # Search directories recursively
+    dir_search_r = BoolProperty(
+            name="Search directories recursively",
+            description="Search directories recursively for textures (may be slow)",
+            default=False,
+            )
+
     # Ignore texture extensions checkbox
-    ext_ignore = BoolProperty(
+    dir_ext_ignore = BoolProperty(
             name="Ignore texture extensions",
             description="Load texture by given name with any of these extensions: dds, tga, bmp",
             default=False,
@@ -490,8 +497,11 @@ class BESImporter(bpy.types.Operator, ImportHelper):
     def draw(self, context):
         layout = self.layout
 
+        # Show checkbox for recursive search
+        layout.prop(self, "dir_search_r")
+
         # Show checkbox for ignoring extensions
-        layout.prop(self, "ext_ignore")
+        layout.prop(self, "dir_ext_ignore")
 
         # Row for adding/removing dirs where may be located textures
         row = layout.row(True)
@@ -511,9 +521,19 @@ class BESImporter(bpy.types.Operator, ImportHelper):
         layout.template_list("UI_UL_list", "TexSubDirs", self, "tex_dirs", self, "tex_dirs_index")
 
     def execute(self, context):
+        models = []
+
+        # Make a list of all directories where script will search for textures
         search_dirs = [self.directory]
         search_dirs.extend(d.name for d in self.tex_dirs)
-        models = []
+        if self.dir_search_r:
+            # Add all subdirectories recursively
+            for root_dir in search_dirs:
+                 for sub_root, dirs, files in os.walk(root_dir):
+                     for sub_dir in dirs:
+                         new_dir = os.path.join(sub_root, sub_dir)
+                         if new_dir not in search_dirs:
+                             search_dirs.append(new_dir)
 
         # Parse all selected files
         for f in self.files:
@@ -544,7 +564,7 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                         # Search for files with any extension supported by
                         # PteroEngine (which is BESMaterial.TexExtensions) if users
                         # chose to ignore extensions
-                        tex_exts = BESMaterial.TexExtensions if self.ext_ignore else []
+                        tex_exts = BESMaterial.TexExtensions if self.dir_ext_ignore else []
 
                         # Since Vietcong is Windows game, we need to work with texture name as
                         # case insensitive. On top of that, the user has a possibility to choose
