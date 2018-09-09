@@ -70,14 +70,24 @@ class BESMaterial(object):
         self.textures = textures
 
 class BESBitmap(BESMaterial):
-    texOffset = 0
+    class Texture:
+        Diffuse      = 0x00
+        Displacement = 0x01
+        Filter       = 0x09
+
+    texOffset = 0x00
     texCnt    = 12
 
     def __init__(self, textures):
         super().__init__(False, textures)
 
 class BESPteroMat(BESMaterial):
-    texOffset = 16
+    class Texture:
+        Ground       = 0x10
+        Multitexture = 0x11
+        Overlay      = 0x12
+
+    texOffset = 0x10
     texCnt    = 8
 
     trans_types = [0x3023, # transparent, zbufwrite, sort
@@ -89,6 +99,28 @@ class BESPteroMat(BESMaterial):
     def __init__(self, name, transparency, textures):
         super().__init__(transparency, textures)
         self.name = name
+
+class BESTexture(object):
+    def __init__(self, use_alpha, blend_type, file_name):
+        self.use_alpha = use_alpha
+        self.blend_type = blend_type
+        self.file_name = file_name
+
+class BESTextureDiffuse(BESTexture):
+    def __init__(self, file_name):
+        super().__init__(True, 'MIX', file_name)
+
+class BESTextureDisplacement(BESTexture):
+    def __init__(self, file_name):
+        super().__init__(False, 'MULTIPLY', file_name)
+
+class BESTextureFilter(BESTexture):
+    def __init__(self, file_name):
+        super().__init__(False, 'MIX', file_name)
+
+class BESTextureUnknown(BESTexture):
+    def __init__(self, file_name):
+        super().__init__(False, 'MIX', file_name)
 
 class BES(object):
     class Header:
@@ -400,7 +432,17 @@ class BES(object):
                 (tex_name_size, coord) = self.unpack("<II", data[ptr:])
                 (tex_name,) = self.unpack("<" + str(tex_name_size) + "s", data[ptr + 8:])
                 tex_name = str(tex_name, 'ascii').strip(chr(0))
-                textures.append(tex_name)
+
+                if texID == BESBitmap.Texture.Diffuse:
+                    tex = BESTextureDiffuse(tex_name)
+                elif texID == BESBitmap.Texture.Displacement:
+                    tex = BESTextureDisplacement(tex_name)
+                elif texID == BESBitmap.Texture.Filter:
+                    tex = BESTextureFilter(tex_name)
+                else:
+                    tex = BESTextureUnknown(tex_name)
+                textures.append(tex)
+
                 ptr += 8 + tex_name_size
 
         return BESBitmap(textures)
@@ -420,7 +462,17 @@ class BES(object):
                 (coord, tex_name_size) = self.unpack("<II", data[ptr:])
                 (tex_name,) = self.unpack("<" + str(tex_name_size) + "s", data[ptr + 8:])
                 tex_name = str(tex_name, 'ascii').strip(chr(0))
-                textures.append(tex_name)
+
+                if texID == BESPteroMat.Texture.Ground:
+                    tex = BESTextureDiffuse(tex_name)
+                elif texID == BESPteroMat.Texture.Multitexture:
+                    tex = BESTextureDisplacement(tex_name)
+                elif texID == BESPteroMat.Texture.Overlay:
+                    tex = BESTextureFilter(tex_name)
+                else:
+                    tex = BESTextureUnknown(tex_name)
+                textures.append(tex)
+
                 ptr += 8 + tex_name_size
 
         return BESPteroMat(name, transparent, textures)
@@ -564,11 +616,12 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                     name = mat.name if isinstance(mat, BESPteroMat) else "bitmap"
                     bpy_mat = bpy.data.materials.new(name)
                     bpy_mat.use_transparency = mat.transparent
-                    bpy_mat.alpha = 0.0
+                    bpy_mat.alpha = 0.0 if mat.transparent else bpy_mat.alpha
                     bpy_materials.append(bpy_mat)
 
                     # Create textures
-                    for tex_file in mat.textures:
+                    for tex in mat.textures:
+                        tex_file = tex.file_name
                         tex_paths = []
                         # Search for files with any extension supported by
                         # PteroEngine (which is BESMaterial.TexExtensions) if users
@@ -594,8 +647,9 @@ class BESImporter(bpy.types.Operator, ImportHelper):
 
                             slot = bpy_mat.texture_slots.add()
                             slot.texture = bpy_tex
-                            slot.use_map_alpha = True
-                            slot.alpha_factor = 1.0
+                            slot.use_map_alpha = tex.use_alpha
+                            slot.alpha_factor = 1.0 if tex.use_alpha else slot.alpha_factor
+                            slot.blend_type = tex.blend_type
                         else:
                             self.report({'ERROR'}, "Texture '{}' not found".format(tex_file))
 
