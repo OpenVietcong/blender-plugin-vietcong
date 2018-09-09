@@ -62,10 +62,11 @@ class BESVertex(object):
 
 class BESMaterial(object):
     NoneMaterial = 0xFFFFFFFF
-    # Texture extensions used by engine (ordered by priority)
+    # Texture extensions used by engine (sorted by priority)
     TexExtensions = ["DDS", "TGA", "BMP"]
 
-    def __init__(self, textures):
+    def __init__(self, transparency, textures):
+        self.transparent = transparency
         self.textures = textures
 
 class BESBitmap(BESMaterial):
@@ -73,14 +74,20 @@ class BESBitmap(BESMaterial):
     texCnt    = 12
 
     def __init__(self, textures):
-        super().__init__(textures)
+        super().__init__(False, textures)
 
 class BESPteroMat(BESMaterial):
     texOffset = 16
     texCnt    = 8
 
-    def __init__(self, name, textures):
-        super().__init__(textures)
+    trans_types = [0x3023, # transparent, zbufwrite, sort
+                   0x3123, # transparent, zbufwrite, sort, 1-bit alpha
+                   0x3223, # translucent, no_zbufwrite, sort
+                   0x3323, # transparent, zbufwrite, nosort, 1-bit alpha
+                   0x3423] # translucent, add with background, no_zbufwrite, sort
+
+    def __init__(self, name, transparency, textures):
+        super().__init__(transparency, textures)
         self.name = name
 
 class BES(object):
@@ -399,10 +406,12 @@ class BES(object):
         return BESBitmap(textures)
 
     def parse_block_pteromat(self, data):
-        (sides, texMask, collis_mat, unk4, veget) = self.unpack("<II4sI4s", data)
+        (sides, texMask, collis_mat, trans_type, veget) = self.unpack("<II4sI4s", data)
         (name_size,) = self.unpack("<I", data[20:])
         (name,) = self.unpack("<" + str(name_size) + "s", data[24:])
         name = str(name, 'ascii').strip(chr(0))
+
+        transparent = trans_type in BESPteroMat.trans_types
 
         textures = []
         ptr = 24 + name_size
@@ -414,7 +423,7 @@ class BES(object):
                 textures.append(tex_name)
                 ptr += 8 + tex_name_size
 
-        return BESPteroMat(name, textures)
+        return BESPteroMat(name, transparent, textures)
 
 class AddDirs(bpy.types.Operator):
     bl_idname = "import_mesh.add_dirs"
@@ -554,7 +563,7 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                 for mat in bes_roots.materials:
                     name = mat.name if isinstance(mat, BESPteroMat) else "bitmap"
                     bpy_mat = bpy.data.materials.new(name)
-                    bpy_mat.use_transparency = True
+                    bpy_mat.use_transparency = mat.transparent
                     bpy_mat.alpha = 0.0
                     bpy_materials.append(bpy_mat)
 
