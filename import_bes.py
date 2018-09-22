@@ -620,7 +620,7 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                     bpy_materials.append(bpy_mat)
 
                     # Create textures
-                    for tex in mat.textures:
+                    for idx, tex in enumerate(mat.textures):
                         tex_file = tex.file_name
                         tex_paths = []
                         # Search for files with any extension supported by
@@ -650,6 +650,7 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                             slot.use_map_alpha = tex.use_alpha
                             slot.alpha_factor = 1.0 if tex.use_alpha else slot.alpha_factor
                             slot.blend_type = tex.blend_type
+                            slot.uv_layer = "{}-{}.uv".format(bpy_mat.name, idx)
                         else:
                             self.report({'ERROR'}, "Texture '{}' not found".format(tex_file))
 
@@ -700,7 +701,7 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                 # Create uv_texture for all material textures
                 for idx, tex in enumerate(bes_mats[bes_mesh.material].textures):
                     uvtex = bpy_mesh.uv_textures.new()
-                    uvtex.name = "{}-uv{}".format(mesh_name, idx)
+                    uvtex.name = "{}-{}.uv".format(bpy_mats[bes_mesh.material].name, idx)
                     uvtex.active = True
                     uvlayer = bpy_mesh.uv_layers[uvtex.name]
 
