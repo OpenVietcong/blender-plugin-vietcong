@@ -625,8 +625,7 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                 bes = BES(os.path.join(self.directory, f.name))
                 models.append(bes)
             except BESError as e:
-                print(e.msg)
-                print("Please report an issue at https://github.com/sonicpp/vietcong-blender-plugins/issues")
+                self.report({'ERROR'}, e.msg)
 
         # Load all parsed models
         for bes in models:
