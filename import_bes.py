@@ -56,8 +56,27 @@ class BESMesh(object):
         self.material = material
 
 class BESVertex(object):
-    def __init__(self, coord, uv = []):
-        self.coord = coord
+    class Flags:
+        XYZ    = 0x002
+        Normal = 0x010
+
+        Tex0   = 0x000
+        Tex1   = 0x100
+        Tex2   = 0x200
+        Tex3   = 0x300
+        Tex4   = 0x400
+        Tex5   = 0x500
+        Tex6   = 0x600
+        Tex7   = 0x700
+        Tex8   = 0x800
+
+        TexcountMask  = 0xf00
+        TexcountShift = 8
+        TexcountMax   = 8
+
+    def __init__(self, coords, normals, uv = []):
+        self.coords = coords
+        self.normals = normals
         self.uv = uv
 
 class BESMaterial(object):
@@ -326,14 +345,17 @@ class BES(object):
         return BESMesh(vertices, faces, material)
 
     def parse_block_vertices(self, data):
-        """
-        Parse Vertices block and return list of tuples.
-        Each tuple means one vertex made of 3 floats (coordinates x, y, z)
-        """
-        (count, size, vType) = self.unpack("<III", data)
-        texCnt = (vType >> 8) & 0xFF
+        """ Parse Vertices block and return list of BESVertex instances """
+        (count, size, flags) = self.unpack("<III", data)
+        texCnt = (flags & BESVertex.Flags.TexcountMask) >> BESVertex.Flags.TexcountShift
+        flagsMin = BESVertex.Flags.XYZ | BESVertex.Flags.Normal
+        flagsMax = flagsMin | BESVertex.Flags.TexcountMask
         vertices = []
 
+        if (flags & flagsMin) != flagsMin or (flags | flagsMax) != flagsMax:
+            raise("Unsupported vertex flags: {:08x}".format(flags))
+        if texCnt > BESVertex.Flags.TexcountMax:
+            raise("Texture count over limit: {}".format(texCnt))
         if 24 + 8 * texCnt != size:
             raise BESError("Vertex size ({}) do not match".format(size))
         if count * size != len(data[12:]):
@@ -341,10 +363,9 @@ class BES(object):
 
         ptr = 12
         for i in range(count):
-            coord = self.unpack("<fff", data[ptr:])
+            coords = self.unpack("<fff", data[ptr:])
             ptr += 12
-
-            # Skip unknown data
+            normals = self.unpack("<fff", data[ptr:])
             ptr += 12
 
             uv_array = []
@@ -353,7 +374,7 @@ class BES(object):
                 uv_array.append(uv)
                 ptr += 8
 
-            vertices.append(BESVertex(coord, uv_array))
+            vertices.append(BESVertex(coords, normals, uv_array))
 
         return vertices
 
@@ -687,7 +708,7 @@ class BESImporter(bpy.types.Operator, ImportHelper):
             mesh_obj.scale = bes_obj.scale
 
             # Update mesh data
-            mesh_coords = list(vert.coord for vert in bes_mesh.vertices)
+            mesh_coords = list(vert.coords for vert in bes_mesh.vertices)
             bpy_mesh.from_pydata(mesh_coords, [], bes_mesh.faces)
             bpy_mesh.update(calc_edges = True)
 
