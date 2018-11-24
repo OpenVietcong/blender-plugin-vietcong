@@ -97,9 +97,11 @@ class BESBitmap(BESMaterial):
 
     texOffset = 0x00
     texCnt    = 12
+    uv_pri = [2, 11, 8, 1, 3, 4, 5, 6, texCnt, 7, 9, 10]
 
     def __init__(self, textures):
         super().__init__(False, textures)
+        self.textures.sort(key=lambda tex: tex.uv_order)
 
 class BESPteroMat(BESMaterial):
     class Texture:
@@ -109,6 +111,7 @@ class BESPteroMat(BESMaterial):
 
     texOffset = 0x10
     texCnt    = 8
+    uv_pri = [1, 3, 2, 5, 4, texCnt, 5, 2]
 
     trans_types = [0x3023, # transparent, zbufwrite, sort
                    0x3123, # transparent, zbufwrite, sort, 1-bit alpha
@@ -119,28 +122,30 @@ class BESPteroMat(BESMaterial):
     def __init__(self, name, transparency, textures):
         super().__init__(transparency, textures)
         self.name = name
+        self.textures.sort(key=lambda tex: tex.uv_order)
 
 class BESTexture(object):
-    def __init__(self, use_alpha, blend_type, file_name):
+    def __init__(self, use_alpha, blend_type, file_name, uv_order):
         self.use_alpha = use_alpha
         self.blend_type = blend_type
         self.file_name = file_name
+        self.uv_order = uv_order
 
 class BESTextureDiffuse(BESTexture):
-    def __init__(self, file_name):
-        super().__init__(True, 'MIX', file_name)
+    def __init__(self, file_name, uv_order):
+        super().__init__(True, 'MIX', file_name, uv_order)
 
 class BESTextureDisplacement(BESTexture):
-    def __init__(self, file_name):
-        super().__init__(False, 'MULTIPLY', file_name)
+    def __init__(self, file_name, uv_order):
+        super().__init__(False, 'MULTIPLY', file_name, uv_order)
 
 class BESTextureFilter(BESTexture):
-    def __init__(self, file_name):
-        super().__init__(False, 'MIX', file_name)
+    def __init__(self, file_name, uv_order):
+        super().__init__(False, 'MIX', file_name, uv_order)
 
 class BESTextureUnknown(BESTexture):
-    def __init__(self, file_name):
-        super().__init__(False, 'MIX', file_name)
+    def __init__(self, file_name, uv_order):
+        super().__init__(False, 'MIX', file_name, uv_order)
 
 class BES(object):
     class Header:
@@ -454,15 +459,16 @@ class BES(object):
                 (tex_name_size, coord) = self.unpack("<II", data[ptr:])
                 (tex_name,) = self.unpack("<" + str(tex_name_size) + "s", data[ptr + 8:])
                 tex_name = str(tex_name, 'ascii').strip(chr(0))
+                uv_order = BESBitmap.uv_pri[texID - BESBitmap.texOffset]
 
                 if texID == BESBitmap.Texture.Diffuse:
-                    tex = BESTextureDiffuse(tex_name)
+                    tex = BESTextureDiffuse(tex_name, uv_order)
                 elif texID == BESBitmap.Texture.Displacement:
-                    tex = BESTextureDisplacement(tex_name)
+                    tex = BESTextureDisplacement(tex_name, uv_order)
                 elif texID == BESBitmap.Texture.Filter:
-                    tex = BESTextureFilter(tex_name)
+                    tex = BESTextureFilter(tex_name, uv_order)
                 else:
-                    tex = BESTextureUnknown(tex_name)
+                    tex = BESTextureUnknown(tex_name, uv_order)
                 textures.append(tex)
 
                 ptr += 8 + tex_name_size
@@ -484,15 +490,16 @@ class BES(object):
                 (coord, tex_name_size) = self.unpack("<II", data[ptr:])
                 (tex_name,) = self.unpack("<" + str(tex_name_size) + "s", data[ptr + 8:])
                 tex_name = str(tex_name, 'ascii').strip(chr(0))
+                uv_order = BESPteroMat.uv_pri[texID - BESPteroMat.texOffset]
 
                 if texID == BESPteroMat.Texture.Ground:
-                    tex = BESTextureDiffuse(tex_name)
+                    tex = BESTextureDiffuse(tex_name, uv_order)
                 elif texID == BESPteroMat.Texture.Multitexture:
-                    tex = BESTextureDisplacement(tex_name)
+                    tex = BESTextureDisplacement(tex_name, uv_order)
                 elif texID == BESPteroMat.Texture.Overlay:
-                    tex = BESTextureFilter(tex_name)
+                    tex = BESTextureFilter(tex_name, uv_order)
                 else:
-                    tex = BESTextureUnknown(tex_name)
+                    tex = BESTextureUnknown(tex_name, uv_order)
                 textures.append(tex)
 
                 ptr += 8 + tex_name_size
