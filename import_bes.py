@@ -175,7 +175,10 @@ class BES(object):
 
     def __init__(self, fname):
         self.objects = []
-        self.f = open(fname, "rb")
+        try:
+            self.f = open(fname, "rb")
+        except Exception as e:
+            raise BESError(str(e))
 
         self.read_header()
         self.read_preview()
