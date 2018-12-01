@@ -653,7 +653,9 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                     # Create textures
                     for idx, tex in enumerate(mat.textures):
                         tex_file = tex.file_name
+                        bpy_tex = bpy.data.textures.new(os.path.splitext(tex_file)[0], 'IMAGE')
                         tex_paths = []
+
                         # Search for files with any extension supported by
                         # PteroEngine (which is BESMaterial.TexExtensions) if users
                         # chose to ignore extensions
@@ -665,9 +667,8 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                         for tex_dir in search_dirs:
                             tex_paths.extend(get_case_insensitive_path(tex_dir, tex_file, tex_exts))
 
+                        # Try to load image from file
                         if len(tex_paths) != 0:
-                            bpy_tex = bpy.data.textures.new(os.path.splitext(tex_file)[0], 'IMAGE')
-
                             # Sort found textures by extension (PteroEngine requires following
                             # priority: dds, tga, bmp)
                             tex_paths.sort(key=functools.cmp_to_key(sort_ext))
@@ -675,15 +676,15 @@ class BESImporter(bpy.types.Operator, ImportHelper):
                             # Simply choose any texture with extension of the highest priority
                             tex_path = ".".join(tex_paths[0])
                             bpy_tex.image = bpy.data.images.load(tex_path)
-
-                            slot = bpy_mat.texture_slots.add()
-                            slot.texture = bpy_tex
-                            slot.use_map_alpha = tex.use_alpha
-                            slot.alpha_factor = 1.0 if tex.use_alpha else slot.alpha_factor
-                            slot.blend_type = tex.blend_type
-                            slot.uv_layer = "{}-{}.uv".format(bpy_mat.name, idx)
                         else:
-                            self.report({'ERROR'}, "Texture '{}' not found".format(tex_file))
+                            self.report({'WARNING'}, "Texture '{}' not found".format(tex_file))
+
+                        slot = bpy_mat.texture_slots.add()
+                        slot.texture = bpy_tex
+                        slot.use_map_alpha = tex.use_alpha
+                        slot.alpha_factor = 1.0 if tex.use_alpha else slot.alpha_factor
+                        slot.blend_type = tex.blend_type
+                        slot.uv_layer = "{}-{}.uv".format(bpy_mat.name, idx)
 
                 # Create objects
                 for bes_obj in bes_roots.children:
