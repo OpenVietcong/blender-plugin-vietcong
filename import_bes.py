@@ -488,11 +488,25 @@ class BES(object):
 
         textures = []
         ptr = 24 + name_size
+        texCnt = 0
         for texID in range(BESPteroMat.texOffset, BESPteroMat.texOffset + BESPteroMat.texCnt):
             if texMask & 1 << texID:
+                texCnt += 1
+
+        for tex in range(texCnt):
                 (coord, tex_name_size) = self.unpack("<II", data[ptr:])
                 (tex_name,) = self.unpack("<" + str(tex_name_size) + "s", data[ptr + 8:])
                 tex_name = str(tex_name, 'ascii').strip(chr(0))
+
+                # Texture type is stored in 'coord', but textures are not sorted by their mask.
+                # Find what type is current texture
+                texID = 0
+                for texPos in range(BESPteroMat.texCnt):
+                    if coord >> BESPteroMat.texOffset == 1 << texPos:
+                        texID = texPos + BESPteroMat.texOffset
+                if texID == 0:
+                    raise("Invalid texture mask")
+
                 uv_order = BESPteroMat.uv_pri[texID - BESPteroMat.texOffset]
 
                 if texID == BESPteroMat.Texture.Ground:
