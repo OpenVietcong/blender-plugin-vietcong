@@ -1,6 +1,19 @@
 # Changelog
 This file contains all release changelogs.
 
+## [0.3.0] - 2018-12-02
+### Added
+- material/texture transparency
+- option to search directories recursively
+- improved material settings to render them more similarly to PteroEngine II
+
+### Changed
+- unified error reports
+- create texture even for non-existent image file
+
+### Fixed
+- #3 multilayer uv mapping
+
 ## [0.2.0] - 2018-08-05
 ### Added
 - importing materials/textures
