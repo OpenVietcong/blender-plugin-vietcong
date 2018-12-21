@@ -39,10 +39,15 @@ It is planned to extend these test data to all user made maps.
 
 ## Installation
 Save import\_bes.py script to your Blender Addons folder:
-* for Linux: /usr/share/blender/[version]/scripts/addons
+* for Linux:
+  * system: /usr/share/blender/[version]/scripts/addons
+  * user: $HOME/.config/blender/[version]/scripts/addons
+* for Mac:
+  * system: /Library/Application Support/Blender/[version]/scripts/addons
+  * user: /Users/$USER/Library/Application Support/Blender/[version]/scripts/addons
 * for Windows:
-  * default installation directory: C:\Program Files\Blender Foundation\blender\[version]\scripts\addons
-  * user location: C:\Users\[user profile]\AppData\Roaming\Blender Foundation\Blender\[user folder]\scripts\addons
+  * default installation directory: C:\Program Files\Blender Foundation\blender\\[version]\scripts\addons
+  * user location: C:\Users\\[user profile]\AppData\Roaming\Blender Foundation\Blender\\[user folder]\scripts\addons
 
 Start Blender and select File -> User Preferences, then enable "Import-Export: Vietcong BES (.bes)" in Import-Export category.
 If you want to auto-enable this plugin each time Blender starts, click on "Save User Settings" in the same window.
