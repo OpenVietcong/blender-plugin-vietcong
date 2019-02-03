@@ -29,7 +29,17 @@ bl_info = {
     "category"   : "Material",
 }
 
-class ptero_material(bpy.types.Panel):
+class BESMaterialProperties(bpy.types.PropertyGroup):
+    material_type = bpy.props.EnumProperty(
+        name = "Material",
+        description = "BES material type",
+        items = [
+            ("Standard", "Standard", "Standard 3DS Max material"),
+            ("PteroMat", "PteroMat", "Ptero-Engine II Material"),
+        ],
+    )
+
+class BESMaterial(bpy.types.Panel):
     bl_idname = "material.bes"
     bl_label = "BES Materials"
     bl_space_type = 'PROPERTIES'
@@ -37,13 +47,18 @@ class ptero_material(bpy.types.Panel):
     bl_context = "material"
 
     def draw(self, context):
-        pass
+        layout = self.layout
+        layout.prop(context.active_object.active_material.bes_mat_panel, "material_type")
 
 def register():
-    bpy.utils.register_class(ptero_material)
+    bpy.utils.register_class(BESMaterial)
+    bpy.utils.register_class(BESMaterialProperties)
+    bpy.types.Material.bes_mat_panel = bpy.props.PointerProperty(type=BESMaterialProperties)
 
 def unregister():
-    bpy.utils.unregister_class(ptero_material)
+    del bpy.types.Material.bes_mat_panel
+    bpy.utils.unregister_class(BESMaterialProperties)
+    bpy.utils.unregister_class(BESMaterial)
 
 if __name__ == "__main__":
     register()
