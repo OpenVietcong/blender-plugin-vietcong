@@ -46,6 +46,10 @@ class BESMaterial(bpy.types.Panel):
     bl_region_type = 'WINDOW'
     bl_context = "material"
 
+    @classmethod
+    def poll(cls, context):
+        return bpy.context.active_object and bpy.context.active_object.active_material
+
     def draw(self, context):
         layout = self.layout
         layout.prop(context.active_object.active_material.bes_mat_panel, "material_type")
