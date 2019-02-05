@@ -47,6 +47,19 @@ class BESMaterialProperties(bpy.types.PropertyGroup):
         update=update_material_type
     )
 
+    pteromat_transparency = bpy.props.EnumProperty(
+        name = "Type of transparent",
+        description = "PteroMat transparency type",
+        items = [
+            ("none", "- none - (opaque)", ""),
+            ("#0",   "#0 - transparent, zbufwrite, sort", ""),
+            ("#1",   "#1 - transparent, zbufwrite, sort, 1-bit alpha", ""),
+            ("#2",   "#2 - translucent, no_zbufwrite, sort", ""),
+            ("#3",   "#3 - transparent, zbufwrite, nosort, 1-bit alpha", ""),
+            ("#4",   "#4 - translucent, add with background, no_zbufwrite, sort", ""),
+        ]
+    )
+
 class BESMaterialPanel(bpy.types.Panel):
     bl_idname = "material.bes"
     bl_label = "BES Materials"
@@ -85,6 +98,8 @@ class BESMaterialPanel(bpy.types.Panel):
         layout.label("Displacement",      icon="IMAGE_DATA")
 
     def draw_pteromat(self, material, layout):
+        layout.prop(material.bes_mat_panel, "pteromat_transparency")
+
         layout.label("Diffuse #1 - Ground",       icon="IMAGE_DATA")
         layout.label("Diffuse #2 - Multitexture", icon="IMAGE_DATA")
         layout.label("Diffuse #3 - Overlay",      icon="IMAGE_DATA")
