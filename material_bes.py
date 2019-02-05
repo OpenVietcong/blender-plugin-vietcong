@@ -59,8 +59,37 @@ class BESMaterialPanel(bpy.types.Panel):
         return bpy.context.active_object and bpy.context.active_object.active_material
 
     def draw(self, context):
+        material = context.active_object.active_material
+
         layout = self.layout
-        layout.prop(context.active_object.active_material.bes_mat_panel, "material_type")
+        layout.prop(material.bes_mat_panel, "material_type")
+
+        if "bes_props" in material and "type" in material["bes_props"] and \
+            material["bes_props"]["type"] == "pteromat":
+            self.draw_pteromat(material, layout)
+        else:
+            self.draw_standard(material, layout)
+
+    def draw_standard(self, material, layout):
+        layout.label("Ambient Color",     icon="IMAGE_DATA")
+        layout.label("Diffuse Color",     icon="IMAGE_DATA")
+        layout.label("Specular Color",    icon="IMAGE_DATA")
+        layout.label("Specular Level",    icon="IMAGE_DATA")
+        layout.label("Glossiness",        icon="IMAGE_DATA")
+        layout.label("Self-Illumination", icon="IMAGE_DATA")
+        layout.label("Opacity",           icon="IMAGE_DATA")
+        layout.label("Filter Color",      icon="IMAGE_DATA")
+        layout.label("Bump",              icon="IMAGE_DATA")
+        layout.label("Reflection",        icon="IMAGE_DATA")
+        layout.label("Refraction",        icon="IMAGE_DATA")
+        layout.label("Displacement",      icon="IMAGE_DATA")
+
+    def draw_pteromat(self, material, layout):
+        layout.label("Diffuse #1 - Ground",       icon="IMAGE_DATA")
+        layout.label("Diffuse #2 - Multitexture", icon="IMAGE_DATA")
+        layout.label("Diffuse #3 - Overlay",      icon="IMAGE_DATA")
+        layout.label("LightMap",                  icon="IMAGE_DATA")
+        layout.label("Environment",               icon="IMAGE_DATA")
 
 def register():
     bpy.utils.register_class(BESMaterialPanel)
