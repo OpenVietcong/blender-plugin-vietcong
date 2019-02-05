@@ -29,17 +29,25 @@ bl_info = {
     "category"   : "Material",
 }
 
+def update_material_type(self, context):
+    material = context.active_object.active_material
+    if "bes_props" not in material:
+        material["bes_props"] = dict()
+
+    material["bes_props"]["type"] = self.material_type
+
 class BESMaterialProperties(bpy.types.PropertyGroup):
     material_type = bpy.props.EnumProperty(
         name = "Material",
         description = "BES material type",
         items = [
-            ("Standard", "Standard", "Standard 3DS Max material"),
-            ("PteroMat", "PteroMat", "Ptero-Engine II Material"),
+            ("standard", "Standard", "Standard 3DS Max texturing material"),
+            ("pteromat", "PteroMat", "Ptero-Engine II Material"),
         ],
+        update=update_material_type
     )
 
-class BESMaterial(bpy.types.Panel):
+class BESMaterialPanel(bpy.types.Panel):
     bl_idname = "material.bes"
     bl_label = "BES Materials"
     bl_space_type = 'PROPERTIES'
@@ -55,14 +63,14 @@ class BESMaterial(bpy.types.Panel):
         layout.prop(context.active_object.active_material.bes_mat_panel, "material_type")
 
 def register():
-    bpy.utils.register_class(BESMaterial)
+    bpy.utils.register_class(BESMaterialPanel)
     bpy.utils.register_class(BESMaterialProperties)
     bpy.types.Material.bes_mat_panel = bpy.props.PointerProperty(type=BESMaterialProperties)
 
 def unregister():
     del bpy.types.Material.bes_mat_panel
     bpy.utils.unregister_class(BESMaterialProperties)
-    bpy.utils.unregister_class(BESMaterial)
+    bpy.utils.unregister_class(BESMaterialPanel)
 
 if __name__ == "__main__":
     register()
