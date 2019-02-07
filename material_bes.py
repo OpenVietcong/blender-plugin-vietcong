@@ -36,6 +36,12 @@ def update_material_type(self, context):
 
     material["bes_props"]["type"] = self.material_type
 
+def update_transparency_type(self, context):
+    material = context.active_object.active_material
+    if "bes_props" not in material:
+        material["bes_props"] = dict()
+    material["bes_props"]["transparency"] = self.pteromat_transparency
+
 class BESMaterialProperties(bpy.types.PropertyGroup):
     material_type = bpy.props.EnumProperty(
         name = "Material",
@@ -57,7 +63,8 @@ class BESMaterialProperties(bpy.types.PropertyGroup):
             ("#2",   "#2 - translucent, no_zbufwrite, sort", ""),
             ("#3",   "#3 - transparent, zbufwrite, nosort, 1-bit alpha", ""),
             ("#4",   "#4 - translucent, add with background, no_zbufwrite, sort", ""),
-        ]
+        ],
+        update=update_transparency_type
     )
 
 class BESMaterialPanel(bpy.types.Panel):
