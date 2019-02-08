@@ -29,18 +29,32 @@ bl_info = {
     "category"   : "Material",
 }
 
+def update_material_view(context):
+    material = context.active_object.active_material
+    if "bes_props" in material and "type" in material["bes_props"] and \
+            material["bes_props"]["type"] == "pteromat" and \
+            "transparency" in material["bes_props"] and \
+            material["bes_props"]["transparency"] != "none":
+        material.use_transparency = True
+        material.alpha = 0.0
+    else:
+        material.use_transparency = False
+        material.alpha = 1.0
+
 def update_material_type(self, context):
     material = context.active_object.active_material
     if "bes_props" not in material:
         material["bes_props"] = dict()
 
     material["bes_props"]["type"] = self.material_type
+    update_material_view(context)
 
 def update_transparency_type(self, context):
     material = context.active_object.active_material
     if "bes_props" not in material:
         material["bes_props"] = dict()
     material["bes_props"]["transparency"] = self.pteromat_transparency
+    update_material_view(context)
 
 class BESMaterialProperties(bpy.types.PropertyGroup):
     material_type = bpy.props.EnumProperty(
