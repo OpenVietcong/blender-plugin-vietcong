@@ -16,6 +16,7 @@
 # ##### END GPL LICENSE BLOCK #####
 
 import bpy
+import pterocolmat
 
 bl_info = {
     "name"       : "Vietcong BES",
@@ -65,6 +66,13 @@ class BESMaterialProperties(bpy.types.PropertyGroup):
             ("pteromat", "PteroMat", "Ptero-Engine II Material"),
         ],
         update=update_material_type
+    )
+
+    pteromat_collision = bpy.props.EnumProperty(
+        name = "Collision Material",
+        description = "PteroMat collision material",
+        items = [("none", "- NONE -", "")] +
+                ([(collision, collision, "") for collision in pterocolmat.ptero_colls]),
     )
 
     pteromat_transparency = bpy.props.EnumProperty(
@@ -119,6 +127,7 @@ class BESMaterialPanel(bpy.types.Panel):
         layout.label("Displacement",      icon="IMAGE_DATA")
 
     def draw_pteromat(self, material, layout):
+        layout.prop(material.bes_mat_panel, "pteromat_collision")
         layout.prop(material.bes_mat_panel, "pteromat_transparency")
 
         layout.label("Diffuse #1 - Ground",       icon="IMAGE_DATA")
